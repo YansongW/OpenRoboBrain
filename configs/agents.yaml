@@ -1,0 +1,308 @@
+# Agent 配置
+# ===========
+# 借鉴 Moltbot/Clawdbot 的多 Agent 架构设计
+
+# =====================
+# 全局默认配置
+# =====================
+defaults:
+  # 工作空间根目录
+  workspace: "~/kaibrain"
+  
+  # 状态目录
+  state_dir: "~/.kaibrain"
+  
+  # 沙箱配置
+  sandbox:
+    mode: "off"  # off | non-main | all
+    scope: "session"  # session | agent | shared
+    
+  # 子 Agent 配置
+  subagents:
+    max_concurrent: 8
+    archive_after_minutes: 60
+    
+  # 运行时配置
+  runtime:
+    max_iterations: 50
+    timeout_seconds: 600.0
+    enable_streaming: true
+    enable_tool_calls: true
+    
+  # 上下文配置
+  context:
+    max_history_messages: 50
+    max_context_tokens: 100000
+    inject_bootstrap: true
+    inject_memory: true
+    memory_days: 2
+    
+  # 模型配置
+  model:
+    default: null  # 由能力层配置
+    temperature: 0.7
+    max_tokens: 4096
+
+# =====================
+# Agent 列表
+# =====================
+agents:
+  # 主 Agent（默认）
+  - id: "main"
+    name: "KaiBrain Main"
+    default: true
+    enabled: true
+    
+    # 工作空间（继承默认值）
+    workspace: "~/kaibrain"
+    
+    # 沙箱配置
+    sandbox:
+      mode: "off"
+      
+    # 工具策略
+    tools:
+      allow: ["*"]
+      deny: []
+      require_approval: []
+      
+    # 元数据
+    metadata:
+      description: "主 Agent，处理通用任务"
+      capabilities: ["general", "planning", "reasoning"]
+      
+  # 视觉 Agent
+  - id: "vision"
+    name: "Vision Agent"
+    enabled: true
+    
+    workspace: "~/kaibrain-vision"
+    
+    sandbox:
+      mode: "non-main"
+      scope: "agent"
+      
+    tools:
+      allow: ["read", "vision_*", "image_*"]
+      deny: ["exec", "write", "edit", "apply_patch"]
+      
+    metadata:
+      description: "视觉处理专用 Agent"
+      capabilities: ["vision", "image_understand", "object_detect"]
+      
+  # 动作 Agent
+  - id: "action"
+    name: "Action Agent"
+    enabled: true
+    
+    workspace: "~/kaibrain-action"
+    
+    sandbox:
+      mode: "all"
+      scope: "session"
+      
+    tools:
+      allow: ["motion_*", "navigation_*", "grasp_*", "read"]
+      deny: ["sessions_spawn"]  # 禁止嵌套派生
+      
+    metadata:
+      description: "动作执行专用 Agent"
+      capabilities: ["motion", "navigation", "grasp"]
+      
+  # 规划 Agent
+  - id: "planner"
+    name: "Planner Agent"
+    enabled: true
+    
+    workspace: "~/kaibrain-planner"
+    
+    tools:
+      allow: ["read", "memory_*", "planning_*"]
+      deny: ["exec", "write"]
+      
+    metadata:
+      description: "任务规划专用 Agent"
+      capabilities: ["planning", "task_decomposition"]
+
+# =====================
+# 路由绑定 (Bindings)
+# =====================
+bindings:
+  # 视觉能力路由到 vision Agent
+  - agentId: "vision"
+    match:
+      capability: "vision"
+    priority: 10
+    
+  - agentId: "vision"
+    match:
+      capability: "image_understand"
+    priority: 10
+    
+  - agentId: "vision"
+    match:
+      capability: "object_detect"
+    priority: 10
+    
+  # 动作能力路由到 action Agent
+  - agentId: "action"
+    match:
+      capability: "motion"
+    priority: 10
+    
+  - agentId: "action"
+    match:
+      capability: "navigation"
+    priority: 10
+    
+  - agentId: "action"
+    match:
+      capability: "grasp"
+    priority: 10
+    
+  # 规划能力路由到 planner Agent
+  - agentId: "planner"
+    match:
+      capability: "planning"
+    priority: 10
+    
+  # 默认路由到 main Agent
+  - agentId: "main"
+    match:
+      capability: "*"
+    priority: 0
+
+# =====================
+# 工具策略 (Tool Policy)
+# =====================
+tool_policy:
+  # 全局策略
+  global:
+    allow: ["*"]
+    deny: []
+    
+  # 沙箱策略（当 sandbox mode 启用时）
+  sandbox:
+    allow: ["read", "memory_*"]
+    deny: ["exec", "write", "edit", "apply_patch", "browser", "gateway"]
+    
+  # 子 Agent 策略
+  subagent:
+    allow: ["*"]
+    deny: ["sessions_spawn", "sessions_list", "sessions_history"]  # 禁止嵌套和会话访问
+    
+  # 预设配置
+  profiles:
+    full:
+      allow: ["*"]
+      deny: []
+    coding:
+      allow: ["read", "write", "edit", "apply_patch", "exec", "process"]
+      deny: ["browser", "gateway", "cron"]
+    messaging:
+      allow: ["message", "sessions_list", "sessions_send", "sessions_history"]
+      deny: ["exec", "write", "edit", "apply_patch"]
+    readonly:
+      allow: ["read", "sessions_list", "sessions_history"]
+      deny: ["exec", "write", "edit", "apply_patch", "process"]
+    safe:
+      allow: ["read", "message"]
+      deny: ["exec", "write", "edit", "apply_patch", "process", "browser", "gateway"]
+
+# =====================
+# 钩子配置 (Hooks)
+# =====================
+hooks:
+  # 启动时执行的钩子
+  on_start:
+    - name: "check_workspace"
+      enabled: true
+    - name: "load_memory"
+      enabled: true
+      
+  # 每次运行前执行的钩子
+  before_run:
+    - name: "inject_bootstrap"
+      enabled: true
+      
+  # 工具调用前执行的钩子
+  before_tool_call:
+    - name: "check_policy"
+      enabled: true
+    - name: "log_tool_call"
+      enabled: true
+
+# =====================
+# Super Agent 配置
+# =====================
+super_agent:
+  enabled: true
+  auto_start: true
+  
+  # 新增：工作空间基础目录
+  workspace_base: "~/kaibrain"
+  state_dir: "~/.kaibrain"
+  
+  # 新增：启用多 Agent 路由
+  enable_routing: true
+
+# =====================
+# 编排 Agent 配置
+# =====================
+orchestrator:
+  enabled: true
+  auto_start: true
+  
+  # 默认任务超时（秒）
+  default_task_timeout: 60.0
+  
+  # 新增：启用 Agent 运行时
+  enable_runtime: true
+  
+  # 新增：任务分解配置
+  task_decomposition:
+    enabled: true
+    max_subtasks: 10
+    enable_parallel: true
+
+# =====================
+# 子能力 Agent 配置（保持向后兼容）
+# =====================
+atomic_agents:
+  # 视觉类
+  vision:
+    image_understand:
+      enabled: true
+      model: "default"
+    object_detect:
+      enabled: true
+      confidence_threshold: 0.5
+    video_understand:
+      enabled: false
+    ocr:
+      enabled: false
+      
+  # 音频类
+  audio:
+    asr:
+      enabled: false
+    tts:
+      enabled: false
+      
+  # 认知类
+  cognitive:
+    reasoning:
+      enabled: false
+    planning:
+      enabled: false
+    qa:
+      enabled: false
+      
+  # 动作类
+  action:
+    motion:
+      enabled: false
+    grasp:
+      enabled: false
+    navigation:
+      enabled: false

@@ -1,0 +1,44 @@
+# 管道配置
+# =========
+
+# 大脑管道（系统层）
+brain_pipeline:
+  # 消息格式
+  protocol: "custom"  # custom, grpc, zeromq
+  
+  # 消息序列化
+  serialization: "json"  # json, msgpack, protobuf
+  
+  # 消息压缩
+  compression: false
+  
+  # 重试配置
+  retry:
+    max_attempts: 3
+    backoff_ms: 100
+
+# 小脑管道（中间件层）
+cerebellum_pipeline:
+  # ROS2节点名称
+  node_name: "kaibrain_cerebellum"
+  
+  # DDS QoS配置
+  qos:
+    reliability: "reliable"  # reliable, best_effort
+    history: "keep_last"     # keep_last, keep_all
+    depth: 10
+    
+  # 话题配置
+  topics:
+    sensor_imu: "/imu/data"
+    sensor_camera: "/camera/image_raw"
+    joint_state: "/joint_states"
+    joint_command: "/joint_commands"
+
+# 管道桥接器
+bridge:
+  # 状态同步间隔（毫秒）
+  sync_interval_ms: 100
+  
+  # 命令转换超时（毫秒）
+  command_timeout_ms: 1000

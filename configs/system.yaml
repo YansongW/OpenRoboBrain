@@ -1,0 +1,108 @@
+# KaiBrain 系统配置
+# =====================
+
+system:
+  name: "KaiBrain"
+  version: "0.1.0"
+  debug: false
+  log_level: "INFO"
+
+# 大脑管道配置
+brain_pipeline:
+  # 消息总线类型: memory, redis, zeromq
+  message_bus_type: "memory"
+  # Redis连接URL（当使用redis时）
+  redis_url: null
+  # 最大队列大小
+  max_queue_size: 10000
+  # 消息超时时间（秒）
+  message_timeout: 30.0
+
+# =====================
+# LLM配置
+# =====================
+llm:
+  # 默认LLM提供商
+  default_provider: "openai"
+  
+  # 各提供商配置
+  providers:
+    openai:
+      api_key: "${OPENAI_API_KEY}"
+      model: "gpt-4o"
+      base_url: null  # 可配置兼容API (如DeepSeek、Azure等)
+      timeout: 60.0
+      max_retries: 3
+    
+    anthropic:
+      api_key: "${ANTHROPIC_API_KEY}"
+      model: "claude-sonnet-4-20250514"
+      timeout: 60.0
+      max_retries: 3
+    
+    ollama:
+      base_url: "http://localhost:11434"
+      model: "llama3.2"
+      timeout: 120.0
+
+# =====================
+# 工具系统配置
+# =====================
+tools:
+  # 内建工具开关
+  builtin:
+    shell: true       # Shell命令执行
+    file: true        # 文件操作
+    http: true        # HTTP请求
+    python: false     # Python代码执行（默认关闭，安全考虑）
+  
+  # 工具执行配置
+  executor:
+    default_timeout: 30.0    # 默认超时时间（秒）
+    max_concurrent: 5        # 最大并发执行数
+  
+  # MCP Server连接配置
+  mcp_servers: []
+    # 示例配置:
+    # - id: "filesystem"
+    #   transport: "stdio"
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"]
+    #
+    # - id: "github"
+    #   transport: "stdio"
+    #   command: "npx"
+    #   args: ["-y", "@modelcontextprotocol/server-github"]
+    #   env:
+    #     GITHUB_TOKEN: "${GITHUB_TOKEN}"
+    #
+    # - id: "database"
+    #   transport: "sse"
+    #   url: "http://localhost:3000/mcp"
+
+# 数据层配置
+data:
+  # 显性数据
+  explicit_db_url: "sqlite:///data/explicit.db"
+  vector_db_path: "data/vectordb"
+  graph_db_url: null  # Neo4j URL (可选)
+  
+  # 隐性数据
+  implicit_policy_path: "data/policies"
+  implicit_mech_config_path: "data/mech_config"
+
+# Agent配置
+agent:
+  # 最大并发Agent数
+  max_concurrent_agents: 100
+  # Agent超时时间（秒）
+  agent_timeout: 60.0
+  # 健康检查间隔（秒）
+  health_check_interval: 10.0
+  # Agent Loop最大迭代次数
+  max_iterations: 15
+  # 默认系统提示词
+  default_system_prompt: |
+    你是KaiBrain，一个具身智能机器人的大脑系统。
+    你可以使用工具来完成任务。
+    在执行操作前，请先思考计划，然后逐步执行。

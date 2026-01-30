@@ -1,0 +1,60 @@
+# 数据层配置
+# ===========
+
+# 显性数据
+explicit:
+  # 工作流记忆
+  workflow_memory:
+    # 每个任务保留的最大执行历史数
+    max_history_per_task: 100
+    # 持久化间隔（秒）
+    persist_interval: 60
+    
+  # 实体记忆
+  entity_memory:
+    # 缓存大小
+    cache_size: 1000
+    # 向量嵌入维度（用于相似度搜索）
+    embedding_dim: 768
+    
+  # 知识网络
+  knowledge_graph:
+    # 图数据库类型: memory, neo4j
+    backend: "memory"
+    # Neo4j连接（当使用neo4j时）
+    neo4j_uri: null
+    neo4j_user: null
+    neo4j_password: null
+
+# 隐性数据
+implicit:
+  # Policy库
+  policy_store:
+    # Policy存储目录
+    storage_path: "data/policies"
+    # Policy加载模式: eager, lazy
+    load_mode: "eager"
+    
+  # 机械配置
+  mech_config:
+    # 配置目录
+    config_path: "data/mech_config"
+    # URDF文件路径
+    urdf_path: "data/mech_config/robot.urdf"
+
+# 存储适配器
+storage:
+  # 关系数据库
+  relational:
+    driver: "sqlite"  # sqlite, postgresql
+    url: "sqlite:///data/kaibrain.db"
+    
+  # 向量数据库
+  vector:
+    driver: "chromadb"  # chromadb, milvus
+    path: "data/vectordb"
+    
+  # 对象存储
+  object:
+    driver: "local"  # local, s3
+    path: "data/objects"
