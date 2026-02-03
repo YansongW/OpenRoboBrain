@@ -7,7 +7,9 @@ Agent间异步消息传递的核心组件。
 from __future__ import annotations
 
 import asyncio
+import time
 from collections import defaultdict
+from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, TYPE_CHECKING
 
 from kaibrain.system.brain_pipeline.protocol import Message, MessageType
@@ -20,6 +22,22 @@ if TYPE_CHECKING:
 # 消息处理器类型
 MessageHandler = Callable[[Message], Any]
 
+# 默认配置
+DEFAULT_QUEUE_MAXSIZE = 1000  # 默认队列最大大小
+DEFAULT_PENDING_CLEANUP_INTERVAL = 30.0  # 默认清理间隔（秒）
+DEFAULT_PENDING_TTL = 300.0  # 默认 pending response 存活时间（秒）
+
+
+@dataclass
+class PendingRequest:
+    """待处理请求的包装器，包含创建时间用于清理"""
+    future: asyncio.Future
+    created_at: float = field(default_factory=time.time)
+    
+    def is_expired(self, ttl: float) -> bool:
+        """检查是否已过期"""
+        return time.time() - self.created_at > ttl
+
 
 class MessageBus(LoggerMixin):
     """
@@ -30,16 +48,35 @@ class MessageBus(LoggerMixin):
     - 点对点消息
     - 发布-订阅
     - 请求-响应
+    
+    安全特性：
+    - 队列大小限制，防止内存溢出
+    - pending_responses 定时清理，防止内存泄漏
+    - 原子操作防止竞态条件
     """
     
-    def __init__(self, config: Optional[ConfigCenter] = None):
+    def __init__(
+        self,
+        config: Optional[ConfigCenter] = None,
+        queue_maxsize: int = DEFAULT_QUEUE_MAXSIZE,
+        pending_cleanup_interval: float = DEFAULT_PENDING_CLEANUP_INTERVAL,
+        pending_ttl: float = DEFAULT_PENDING_TTL,
+    ):
         """
         初始化消息总线
         
         Args:
             config: 配置中心
+            queue_maxsize: 队列最大大小，防止内存溢出
+            pending_cleanup_interval: pending_responses 清理间隔（秒）
+            pending_ttl: pending_responses 存活时间（秒）
         """
         self.config = config
+        
+        # 配置参数
+        self._queue_maxsize = queue_maxsize
+        self._pending_cleanup_interval = pending_cleanup_interval
+        self._pending_ttl = pending_ttl
         
         # 消息队列
         self._queues: Dict[str, asyncio.Queue] = {}
@@ -50,28 +87,75 @@ class MessageBus(LoggerMixin):
         # 消息处理器：agent_id -> handler
         self._handlers: Dict[str, MessageHandler] = {}
         
-        # 等待响应的请求：correlation_id -> Future
-        self._pending_responses: Dict[str, asyncio.Future] = {}
+        # 等待响应的请求：correlation_id -> PendingRequest
+        self._pending_responses: Dict[str, PendingRequest] = {}
+        self._pending_lock = asyncio.Lock()  # 保护 pending_responses 的锁
         
         # 运行状态
         self._running = False
         self._dispatch_task: Optional[asyncio.Task] = None
+        self._cleanup_task: Optional[asyncio.Task] = None
         
     async def initialize(self) -> None:
         """初始化消息总线"""
         self.logger.info("初始化消息总线...")
         self._running = True
         
+        # 启动 pending_responses 清理任务
+        self._cleanup_task = asyncio.create_task(self._cleanup_pending_loop())
+        self.logger.info(
+            f"消息总线配置: queue_maxsize={self._queue_maxsize}, "
+            f"pending_ttl={self._pending_ttl}s, cleanup_interval={self._pending_cleanup_interval}s"
+        )
+        
     async def shutdown(self) -> None:
         """关闭消息总线"""
         self.logger.info("关闭消息总线...")
         self._running = False
         
+        # 停止清理任务
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
+        
         # 取消所有等待的响应
-        for future in self._pending_responses.values():
-            if not future.done():
-                future.cancel()
-        self._pending_responses.clear()
+        async with self._pending_lock:
+            for pending in self._pending_responses.values():
+                if not pending.future.done():
+                    pending.future.cancel()
+            self._pending_responses.clear()
+    
+    async def _cleanup_pending_loop(self) -> None:
+        """定时清理过期的 pending_responses，防止内存泄漏"""
+        while self._running:
+            try:
+                await asyncio.sleep(self._pending_cleanup_interval)
+                await self._cleanup_expired_pending()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                self.logger.error(f"清理 pending_responses 时出错: {e}")
+    
+    async def _cleanup_expired_pending(self) -> None:
+        """清理已过期的 pending_responses"""
+        expired_ids = []
+        
+        async with self._pending_lock:
+            for msg_id, pending in self._pending_responses.items():
+                if pending.is_expired(self._pending_ttl) or pending.future.done():
+                    expired_ids.append(msg_id)
+            
+            for msg_id in expired_ids:
+                pending = self._pending_responses.pop(msg_id, None)
+                if pending and not pending.future.done():
+                    pending.future.cancel()
+        
+        if expired_ids:
+            self.logger.debug(f"清理了 {len(expired_ids)} 个过期的 pending_responses")
         
     def register(self, agent_id: str, handler: Optional[MessageHandler] = None) -> asyncio.Queue:
         """
@@ -82,19 +166,20 @@ class MessageBus(LoggerMixin):
             handler: 消息处理器
             
         Returns:
-            该Agent的消息队列
+            该Agent的消息队列（有大小限制）
         """
         if agent_id in self._queues:
             self.logger.warning(f"Agent已注册: {agent_id}")
             return self._queues[agent_id]
-            
-        queue: asyncio.Queue = asyncio.Queue()
+        
+        # 创建有界队列，防止内存溢出
+        queue: asyncio.Queue = asyncio.Queue(maxsize=self._queue_maxsize)
         self._queues[agent_id] = queue
         
         if handler:
             self._handlers[agent_id] = handler
             
-        self.logger.info(f"Agent注册到消息总线: {agent_id}")
+        self.logger.info(f"Agent注册到消息总线: {agent_id} (queue_maxsize={self._queue_maxsize})")
         return queue
         
     def unregister(self, agent_id: str) -> None:
@@ -152,10 +237,22 @@ class MessageBus(LoggerMixin):
         """发送到指定目标"""
         queue = self._queues.get(message.target)
         if queue:
-            await queue.put(message)
-            self.logger.debug(
-                f"消息发送: {message.source} -> {message.target} [{message.type.value}]"
-            )
+            try:
+                # 使用 put_nowait 检测队列是否满
+                # 如果满了，使用超时等待，避免无限阻塞
+                if queue.full():
+                    self.logger.warning(
+                        f"目标队列已满，等待空间: {message.target} "
+                        f"(size={queue.qsize()}/{self._queue_maxsize})"
+                    )
+                await asyncio.wait_for(queue.put(message), timeout=5.0)
+                self.logger.debug(
+                    f"消息发送: {message.source} -> {message.target} [{message.type.value}]"
+                )
+            except asyncio.TimeoutError:
+                self.logger.error(
+                    f"发送消息超时，目标队列持续满: {message.target}, 消息丢弃"
+                )
         else:
             self.logger.warning(f"目标Agent不存在: {message.target}")
             
@@ -166,7 +263,17 @@ class MessageBus(LoggerMixin):
         for subscriber_id in subscribers:
             queue = self._queues.get(subscriber_id)
             if queue:
-                await queue.put(message)
+                try:
+                    if queue.full():
+                        self.logger.warning(
+                            f"订阅者队列已满: {subscriber_id} "
+                            f"(size={queue.qsize()}/{self._queue_maxsize})"
+                        )
+                    await asyncio.wait_for(queue.put(message), timeout=5.0)
+                except asyncio.TimeoutError:
+                    self.logger.error(
+                        f"发布消息超时，订阅者队列持续满: {subscriber_id}, 消息丢弃"
+                    )
                 
         self.logger.debug(
             f"消息发布: {message.source} -> [{message.topic}] ({len(subscribers)} 订阅者)"
@@ -187,9 +294,13 @@ class MessageBus(LoggerMixin):
         Returns:
             响应消息，超时返回 None
         """
-        # 创建Future等待响应
+        # 创建 Future 等待响应，使用 PendingRequest 包装以支持清理
         future: asyncio.Future = asyncio.Future()
-        self._pending_responses[message.message_id] = future
+        pending = PendingRequest(future=future)
+        
+        # 使用锁保护 pending_responses 的访问，防止竞态条件
+        async with self._pending_lock:
+            self._pending_responses[message.message_id] = pending
         
         try:
             # 发送请求
@@ -204,7 +315,9 @@ class MessageBus(LoggerMixin):
             return None
             
         finally:
-            self._pending_responses.pop(message.message_id, None)
+            # 清理 pending_responses
+            async with self._pending_lock:
+                self._pending_responses.pop(message.message_id, None)
             
     async def respond(self, response: Message) -> None:
         """
@@ -213,14 +326,25 @@ class MessageBus(LoggerMixin):
         Args:
             response: 响应消息（需要设置 correlation_id）
         """
-        # 检查是否有等待的请求
-        if response.correlation_id and response.correlation_id in self._pending_responses:
-            future = self._pending_responses[response.correlation_id]
-            if not future.done():
-                future.set_result(response)
-                return
+        if not response.correlation_id:
+            # 没有 correlation_id，正常发送
+            await self.send(response)
+            return
+        
+        # 使用锁保护，原子操作防止竞态条件
+        async with self._pending_lock:
+            pending = self._pending_responses.get(response.correlation_id)
+            
+            if pending:
+                if not pending.future.done():
+                    # 设置响应结果
+                    pending.future.set_result(response)
+                    return
+                else:
+                    # Future 已完成（可能是超时），清理该条目
+                    self._pending_responses.pop(response.correlation_id, None)
                 
-        # 否则正常发送
+        # 没有找到等待的请求，或请求已完成，正常发送
         await self.send(response)
         
     async def receive(self, agent_id: str, timeout: Optional[float] = None) -> Optional[Message]:
@@ -257,3 +381,38 @@ class MessageBus(LoggerMixin):
     def get_registered_agents(self) -> List[str]:
         """获取已注册的Agent列表"""
         return list(self._queues.keys())
+    
+    def get_pending_count(self) -> int:
+        """获取当前等待响应的请求数量"""
+        return len(self._pending_responses)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """
+        获取消息总线统计信息
+        
+        Returns:
+            包含各项统计的字典
+        """
+        queue_stats = {}
+        for agent_id, queue in self._queues.items():
+            queue_stats[agent_id] = {
+                "size": queue.qsize(),
+                "maxsize": self._queue_maxsize,
+                "full": queue.full(),
+            }
+        
+        return {
+            "running": self._running,
+            "registered_agents": len(self._queues),
+            "pending_responses": len(self._pending_responses),
+            "subscriptions": {
+                topic: len(subscribers) 
+                for topic, subscribers in self._subscriptions.items()
+            },
+            "queue_stats": queue_stats,
+            "config": {
+                "queue_maxsize": self._queue_maxsize,
+                "pending_ttl": self._pending_ttl,
+                "pending_cleanup_interval": self._pending_cleanup_interval,
+            },
+        }

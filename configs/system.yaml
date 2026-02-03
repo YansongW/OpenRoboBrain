@@ -23,14 +23,16 @@ brain_pipeline:
 # =====================
 llm:
   # 默认LLM提供商
+  # 可选: openai, anthropic, kimi, glm, qwen, doubao, deepseek, ollama
   default_provider: "openai"
   
   # 各提供商配置
   providers:
+    # ========== 国际模型 ==========
     openai:
       api_key: "${OPENAI_API_KEY}"
       model: "gpt-4o"
-      base_url: null  # 可配置兼容API (如DeepSeek、Azure等)
+      base_url: null  # 默认OpenAI官方API
       timeout: 60.0
       max_retries: 3
     
@@ -40,9 +42,56 @@ llm:
       timeout: 60.0
       max_retries: 3
     
+    # ========== 国产大模型 (OpenAI兼容API) ==========
+    # Kimi (月之暗面 Moonshot AI)
+    # 官网: https://platform.moonshot.cn/
+    kimi:
+      api_key: "${KIMI_API_KEY}"
+      model: "moonshot-v1-128k"  # 可选: moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k
+      base_url: "https://api.moonshot.cn/v1"
+      timeout: 60.0
+      max_retries: 3
+    
+    # GLM (智谱清言)
+    # 官网: https://open.bigmodel.cn/
+    glm:
+      api_key: "${GLM_API_KEY}"
+      model: "glm-4-plus"  # 可选: glm-4, glm-4-plus, glm-4-air, glm-4-flash
+      base_url: "https://open.bigmodel.cn/api/paas/v4"
+      timeout: 60.0
+      max_retries: 3
+    
+    # Qwen (通义千问)
+    # 官网: https://dashscope.aliyun.com/
+    qwen:
+      api_key: "${QWEN_API_KEY}"
+      model: "qwen-max"  # 可选: qwen-turbo, qwen-plus, qwen-max, qwen-max-longcontext
+      base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      timeout: 60.0
+      max_retries: 3
+    
+    # Doubao (字节豆包)
+    # 官网: https://www.volcengine.com/product/doubao
+    doubao:
+      api_key: "${DOUBAO_API_KEY}"
+      model: "doubao-pro-32k"  # 需要在火山引擎创建推理接入点获取endpoint_id
+      base_url: "https://ark.cn-beijing.volces.com/api/v3"
+      timeout: 60.0
+      max_retries: 3
+    
+    # DeepSeek
+    # 官网: https://platform.deepseek.com/
+    deepseek:
+      api_key: "${DEEPSEEK_API_KEY}"
+      model: "deepseek-chat"  # 可选: deepseek-chat, deepseek-coder
+      base_url: "https://api.deepseek.com/v1"
+      timeout: 60.0
+      max_retries: 3
+    
+    # ========== 本地模型 ==========
     ollama:
       base_url: "http://localhost:11434"
-      model: "llama3.2"
+      model: "llama3.2"  # 需要先用 ollama pull 下载
       timeout: 120.0
 
 # =====================

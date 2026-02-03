@@ -4,8 +4,12 @@ Tool Executor
 工具调用执行器，负责：
 - 工具注册和管理
 - 工具调用解析
-- 工具执行
+- 工具执行（含策略强制执行）
 - 结果处理
+
+安全特性：
+- 工具策略强制执行：所有工具调用必须通过策略检查
+- 策略检查在执行层进行，无法绕过
 
 借鉴 Moltbot 的工具执行设计。
 """
@@ -18,10 +22,13 @@ import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, TYPE_CHECKING
 from uuid import uuid4
 
 from kaibrain.system.services.logger import LoggerMixin
+
+if TYPE_CHECKING:
+    from kaibrain.agent.security.tool_policy import ToolPolicy, PolicyDecision
 
 
 class ToolResultStatus(Enum):
@@ -314,12 +321,19 @@ class ToolExecutor(LoggerMixin):
     工具执行器
     
     负责解析和执行工具调用。
+    
+    安全特性：
+    - 强制执行工具策略：如果配置了 policy，所有工具调用必须通过策略检查
+    - 策略检查在 execute() 中进行，无法被绕过
+    - 被拒绝的工具调用返回 DENIED 状态
     """
     
     def __init__(
         self,
         registry: Optional[ToolRegistry] = None,
         default_timeout: float = 60.0,
+        policy: Optional["ToolPolicy"] = None,
+        enforce_policy: bool = True,
     ):
         """
         初始化工具执行器
@@ -327,13 +341,33 @@ class ToolExecutor(LoggerMixin):
         Args:
             registry: 工具注册表
             default_timeout: 默认超时时间
+            policy: 工具策略（如果提供，将强制执行策略检查）
+            enforce_policy: 是否强制执行策略（默认 True）
         """
         self._registry = registry or ToolRegistry()
         self._default_timeout = default_timeout
+        self._policy = policy
+        self._enforce_policy = enforce_policy
         
         # 执行统计
         self._execution_count = 0
         self._error_count = 0
+        self._denied_count = 0  # 被策略拒绝的次数
+    
+    @property
+    def policy(self) -> Optional["ToolPolicy"]:
+        """工具策略"""
+        return self._policy
+    
+    def set_policy(self, policy: Optional["ToolPolicy"]) -> None:
+        """
+        设置工具策略
+        
+        Args:
+            policy: 工具策略
+        """
+        self._policy = policy
+        self.logger.info(f"工具执行器策略已更新: policy={'已配置' if policy else '无'}")
         
     @property
     def registry(self) -> ToolRegistry:
@@ -363,15 +397,24 @@ class ToolExecutor(LoggerMixin):
         """
         执行工具调用
         
+        执行流程：
+        1. 工具存在检查
+        2. 策略检查（如果配置了 policy）
+        3. 工具执行
+        
         Args:
             tool_call: 工具调用
-            context: 执行上下文
+            context: 执行上下文，可包含:
+                - agent_id: Agent ID
+                - is_sandbox: 是否在沙箱中
+                - is_subagent: 是否是子 Agent
             
         Returns:
             执行结果
         """
         start_time = datetime.now()
         self._execution_count += 1
+        context = context or {}
         
         # 获取工具定义
         tool = self._registry.get(tool_call.tool_name)
@@ -384,6 +427,54 @@ class ToolExecutor(LoggerMixin):
                 status=ToolResultStatus.ERROR,
                 error=f"工具不存在: {tool_call.tool_name}",
             )
+        
+        # ========== 策略检查（安全关键）==========
+        if self._policy and self._enforce_policy:
+            try:
+                from kaibrain.agent.security.tool_policy import PolicyDecision
+                
+                decision = self._policy.check(
+                    tool_name=tool_call.tool_name,
+                    agent_id=context.get("agent_id"),
+                    is_sandbox=context.get("is_sandbox", False),
+                    is_subagent=context.get("is_subagent", False),
+                )
+                
+                if decision == PolicyDecision.DENY:
+                    self._denied_count += 1
+                    self.logger.warning(
+                        f"工具调用被策略拒绝: {tool_call.tool_name} "
+                        f"(agent={context.get('agent_id')}, "
+                        f"sandbox={context.get('is_sandbox')}, "
+                        f"subagent={context.get('is_subagent')})"
+                    )
+                    return self.deny_tool_call(
+                        tool_call,
+                        f"工具 '{tool_call.tool_name}' 被策略拒绝",
+                    )
+                    
+                elif decision == PolicyDecision.REQUIRE_APPROVAL:
+                    # TODO: 实现审批流程
+                    # 目前暂时拒绝需要审批的工具
+                    self._denied_count += 1
+                    self.logger.warning(
+                        f"工具调用需要审批（当前拒绝）: {tool_call.tool_name}"
+                    )
+                    return self.deny_tool_call(
+                        tool_call,
+                        f"工具 '{tool_call.tool_name}' 需要审批，当前暂不支持",
+                    )
+                    
+                # PolicyDecision.ALLOW - 继续执行
+                
+            except ImportError as e:
+                self.logger.error(f"无法加载策略模块: {e}")
+                # 如果策略模块无法加载但配置了策略，安全起见拒绝执行
+                return self.deny_tool_call(
+                    tool_call,
+                    "策略模块加载失败，工具调用被拒绝",
+                )
+        # ========== 策略检查结束 ==========
             
         # 执行工具
         try:
@@ -522,11 +613,13 @@ class ToolExecutor(LoggerMixin):
         return {
             "execution_count": self._execution_count,
             "error_count": self._error_count,
+            "denied_count": self._denied_count,
             "success_rate": (
-                (self._execution_count - self._error_count) / self._execution_count
+                (self._execution_count - self._error_count - self._denied_count) / self._execution_count
                 if self._execution_count > 0 else 0
             ),
             "registered_tools": len(self._registry._tools),
+            "policy_enabled": self._policy is not None and self._enforce_policy,
         }
 
 

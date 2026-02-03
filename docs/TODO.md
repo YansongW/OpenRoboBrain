@@ -4,20 +4,22 @@
 
 ### 开发任务
 
-- [ ] **D-001** Agent运行时主循环完善
+- [x] **D-001** Agent运行时主循环完善 ✅
   - 文件: `kaibrain/agent/runtime/agent_loop.py`
-  - 任务: 补全`pass`占位的方法实现
-  - 优先级: P0
+  - 状态: 已完成完整实现（事件驱动、生命周期钩子、流式输出）
 
-- [ ] **D-002** 工具执行器完善
+- [x] **D-002** 工具执行器完善 ✅
   - 文件: `kaibrain/agent/runtime/tool_executor.py`
-  - 任务: 实现工具调用、结果处理
-  - 优先级: P0
+  - 状态: 已完成（工具注册、执行、超时控制）
 
-- [ ] **D-003** Shell工具安全实现
+- [x] **D-003** Shell工具安全实现 ✅
   - 文件: `kaibrain/system/tools/builtin/shell.py`
-  - 任务: 实现命令白名单、超时控制
-  - 优先级: P0
+  - 状态: 已完成（白/黑名单、超时、后台执行、安全模式）
+
+- [ ] **D-004** SQLite存储适配器
+  - 文件: `kaibrain/data/storage/relational.py`
+  - 任务: 实现基础CRUD、连接池
+  - 优先级: P0 (阻塞持久化)
 
 ### 测试任务
 
@@ -41,19 +43,14 @@
 
 ### 开发任务
 
-- [ ] **D-004** SQLite存储适配器
-  - 文件: `kaibrain/data/storage/relational.py`
-  - 任务: 实现基础CRUD、连接池
-  - 依赖: 无
-
 - [ ] **D-005** 工作流记忆持久化
   - 文件: `kaibrain/data/explicit/workflow_memory.py`
   - 任务: 集成SQLite存储
   - 依赖: D-004
 
-- [ ] **D-006** HTTP工具完善
+- [x] **D-006** HTTP工具完善 ✅
   - 文件: `kaibrain/system/tools/builtin/http.py`
-  - 任务: 实现请求、响应解析
+  - 状态: 已完成（GET/POST、httpx/aiohttp双支持、文件下载）
 
 - [ ] **D-007** 子Agent生成器
   - 文件: `kaibrain/agent/subagent/spawn.py`
@@ -62,6 +59,10 @@
 - [ ] **D-008** 任务拆解器LLM集成
   - 文件: `kaibrain/agent/orchestrator/task_decomposer.py`
   - 任务: 使用LLM自动拆解复杂任务
+
+- [x] **D-009** 行为层框架实现 ✅
+  - 目录: `kaibrain/behavior/`
+  - 状态: 已完成（基类、注册表、执行器、内置行为）
 
 ### 测试任务
 
@@ -136,12 +137,25 @@
 
 ## 已完成
 
-- [x] 六层架构设计
+- [x] 七层架构设计（含行为层）
 - [x] Agent基类实现
 - [x] LLM Provider实现 (OpenAI/Anthropic/Ollama)
 - [x] 消息总线实现
 - [x] 配置中心实现
 - [x] 文件工具实现
+- [x] Agent Loop完整实现（事件驱动、生命周期钩子）
+- [x] 工具执行器实现（注册、执行、超时）
+- [x] Shell工具安全实现（白/黑名单、安全模式）
+- [x] HTTP工具实现（GET/POST、文件下载）
+- [x] 上下文构建器实现（Bootstrap注入、记忆、压缩）
+- [x] WebSocket服务器实现（大脑管道通信）
+- [x] Brain-Cerebellum Bridge实现（大小脑桥接）
+- [x] 会话存储实现（内存版）
+- [x] 工作流记忆实现（内存版 + SQLite持久化）
+- [x] SQLite存储适配器（连接池、CRUD、迁移）
+- [x] 测试框架搭建（pytest配置、fixtures）
+- [x] 行为层框架（基类、注册表、执行器）
+- [x] 内置行为（烹饪、清洁）
 
 ---
 
@@ -163,9 +177,18 @@
   - P: 产品 Product
   - DOC: 文档 Documentation
   - B: 阻塞 Blocker
+  - RISK: 风险修复
 
 - 优先级:
   - P0: 阻塞性，本周必须完成
   - P1: 重要，下周完成
   - P2: 一般，月内完成
   - P3: 低优先级
+
+---
+
+## 相关文档
+
+- [RISKS.md](./RISKS.md) - 风险管理
+- [BUGS.md](./BUGS.md) - BUG跟踪
+- [ARCHITECTURE.md](./ARCHITECTURE.md) - 架构文档

@@ -63,6 +63,12 @@ class LLMFactory(LoggerMixin):
         
         return cls._providers[name]
     
+    # OpenAI兼容的Provider列表
+    OPENAI_COMPATIBLE_PROVIDERS = {
+        "kimi", "glm", "qwen", "doubao", "deepseek", 
+        "yi", "baichuan", "minimax", "zhipu"
+    }
+    
     @classmethod
     def _lazy_load_provider(cls, name: str) -> None:
         """懒加载Provider"""
@@ -76,6 +82,10 @@ class LLMFactory(LoggerMixin):
             elif name == "ollama":
                 from kaibrain.system.llm.providers.ollama import OllamaLLM
                 cls._providers["ollama"] = OllamaLLM
+            elif name in cls.OPENAI_COMPATIBLE_PROVIDERS:
+                # 国产模型都使用OpenAI兼容接口
+                from kaibrain.system.llm.providers.openai import OpenAILLM
+                cls._providers[name] = OpenAILLM
         except ImportError as e:
             logger.warning(f"Failed to load provider {name}: {e}")
     
@@ -143,10 +153,22 @@ class LLMFactory(LoggerMixin):
     @classmethod
     def list_providers(cls) -> list:
         """列出所有可用的Provider"""
-        # 尝试加载所有已知的provider
-        for name in ["openai", "anthropic", "ollama"]:
+        # 所有已知的provider
+        all_providers = [
+            "openai", "anthropic", "ollama",
+            # 国产模型 (OpenAI兼容)
+            "kimi", "glm", "qwen", "doubao", "deepseek",
+            "yi", "baichuan", "minimax",
+        ]
+        # 尝试加载
+        for name in all_providers:
             cls._lazy_load_provider(name)
         return list(cls._providers.keys())
+    
+    @classmethod
+    def is_openai_compatible(cls, provider: str) -> bool:
+        """检查provider是否是OpenAI兼容的"""
+        return provider in cls.OPENAI_COMPATIBLE_PROVIDERS or provider == "openai"
 
 
 def create_llm(

@@ -28,8 +28,20 @@ class OpenAILLM(BaseLLM):
     """
     OpenAI LLM Provider
     
-    支持OpenAI API和兼容API（如DeepSeek、Azure等）。
+    支持OpenAI API和兼容API（如Kimi、GLM、Qwen、Doubao、DeepSeek等）。
     """
+    
+    # 已知的OpenAI兼容端点映射
+    KNOWN_ENDPOINTS = {
+        "api.moonshot.cn": "kimi",
+        "open.bigmodel.cn": "glm",
+        "dashscope.aliyuncs.com": "qwen",
+        "ark.cn-beijing.volces.com": "doubao",
+        "api.deepseek.com": "deepseek",
+        "api.lingyiwanwu.com": "yi",
+        "api.baichuan-ai.com": "baichuan",
+        "api.minimax.chat": "minimax",
+    }
     
     def __init__(
         self,
@@ -64,9 +76,24 @@ class OpenAILLM(BaseLLM):
         self.organization = organization
         self._client: Optional[Any] = None
         self._async_client: Optional[Any] = None
+        self._detected_provider: Optional[str] = None
     
     @property
     def provider_name(self) -> str:
+        """
+        获取provider名称
+        
+        会根据base_url自动检测实际使用的服务商。
+        """
+        if self._detected_provider:
+            return self._detected_provider
+        
+        if self.base_url:
+            for endpoint, name in self.KNOWN_ENDPOINTS.items():
+                if endpoint in self.base_url:
+                    self._detected_provider = name
+                    return name
+        
         return "openai"
     
     @property

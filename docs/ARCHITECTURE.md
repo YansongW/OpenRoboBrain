@@ -324,3 +324,48 @@ feedback = await bridge.send_command(command, wait_for_completion=True)
 3. **数据隔离**: 显性数据可学习，隐性数据受保护
 4. **统一桥接**: 通过 Bridge 实现必要的状态同步
 5. **安全优先**: 各自独立的安全机制
+
+## 7. 质量保障
+
+### 7.1 风险管理
+
+项目使用多层风险管理机制：
+
+| 机制 | 文件 | 说明 |
+|------|------|------|
+| 风险文档 | [RISKS.md](./RISKS.md) | 记录已识别风险和缓解措施 |
+| BUG跟踪 | [BUGS.md](./BUGS.md) | 跟踪已知问题和修复进度 |
+| 运行时监控 | `risk_monitor.py` | 启动检查和运行时监控 |
+
+### 7.2 风险等级
+
+| 等级 | 描述 | 部署要求 |
+|------|------|----------|
+| 🔴 CRITICAL | 致命风险，可能导致人身伤害 | **必须修复** |
+| 🟠 HIGH | 高风险，影响系统安全 | 强烈建议修复 |
+| 🟡 MEDIUM | 中风险，影响稳定性 | 计划内修复 |
+| 🟢 LOW | 低风险，可接受 | 可选修复 |
+
+### 7.3 启动检查
+
+在部署前运行风险检查：
+
+```python
+from kaibrain.system.services import run_risk_check
+
+# 运行启动检查
+report = await run_risk_check()
+
+# 检查致命风险
+critical_risks = [r for r in report.risks if r.level.value == "critical"]
+if critical_risks:
+    print("⚠️ 存在致命风险，不建议部署")
+    for risk in critical_risks:
+        print(f"  - {risk.id}: {risk.title}")
+```
+
+### 7.4 相关文档
+
+- [RISKS.md](./RISKS.md) - 完整风险清单
+- [BUGS.md](./BUGS.md) - BUG跟踪列表
+- [TODO.md](./TODO.md) - 待办任务

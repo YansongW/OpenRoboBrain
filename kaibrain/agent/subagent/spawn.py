@@ -6,6 +6,12 @@ Sub-agent Spawner
 - 独立 session
 - 工具限制
 - 结果回报 (Announce)
+- 任务强制终止（安全关键）
+
+安全特性：
+- 存储 asyncio.Task 引用以支持强制取消
+- stop_spawn() 会真正取消正在运行的任务
+- 清理逻辑确保资源正确释放
 
 借鉴 OpenClaw/Moltbot 的 sessions_spawn 设计。
 """
@@ -18,6 +24,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 from uuid import uuid4
+import weakref
 
 from kaibrain.system.services.logger import LoggerMixin
 from kaibrain.agent.infrastructure.session_store import (
@@ -146,6 +153,10 @@ class SubAgentSpawner(LoggerMixin):
         # 活跃的子 Agent
         self._active_spawns: Dict[str, SpawnResult] = {}
         
+        # 任务引用跟踪（用于强制取消）
+        self._spawn_tasks: Dict[str, asyncio.Task] = {}
+        self._task_lock = asyncio.Lock()  # 保护任务字典的锁
+        
         # 完成回调
         self._completion_callbacks: List[SpawnCompletionCallback] = []
         
@@ -156,6 +167,7 @@ class SubAgentSpawner(LoggerMixin):
         self._total_spawns = 0
         self._successful_spawns = 0
         self._failed_spawns = 0
+        self._cancelled_spawns = 0  # 被取消的派生数
         
     @property
     def active_spawns(self) -> Dict[str, SpawnResult]:
@@ -267,19 +279,29 @@ class SubAgentSpawner(LoggerMixin):
         # 保存活跃派生
         self._active_spawns[result.spawn_id] = result
         
-        # 提交到并发控制器（后台执行）
+        # 创建执行任务并存储引用（用于强制取消）
         async def run_subagent():
-            await self._execute_subagent(
-                result=result,
-                request=request,
-                runtime=runtime,
-                session_store=session_store,
-            )
-            
-        await self._concurrency.submit(
-            run_subagent(),
-            lane_id="subagent",
-        )
+            try:
+                await self._execute_subagent(
+                    result=result,
+                    request=request,
+                    runtime=runtime,
+                    session_store=session_store,
+                )
+            finally:
+                # 清理任务引用
+                async with self._task_lock:
+                    self._spawn_tasks.pop(result.spawn_id, None)
+        
+        # 直接创建任务（不通过并发控制器，以便跟踪）
+        task = asyncio.create_task(run_subagent())
+        
+        # 存储任务引用
+        async with self._task_lock:
+            self._spawn_tasks[result.spawn_id] = task
+        
+        # 同时提交到并发控制器进行调度（可选）
+        # await self._concurrency.submit(run_subagent(), lane_id="subagent")
         
         self.logger.info(f"子 Agent 已派生: {result.spawn_id} -> {session_key}")
         return result
@@ -474,43 +496,129 @@ class SubAgentSpawner(LoggerMixin):
             
         return spawns
         
-    async def stop_spawn(self, spawn_id: str) -> bool:
+    async def stop_spawn(
+        self,
+        spawn_id: str,
+        timeout: float = 5.0,
+        force: bool = False,
+    ) -> bool:
         """
-        停止派生
+        停止派生（强制取消正在运行的任务）
         
         Args:
             spawn_id: 派生 ID
+            timeout: 等待取消完成的超时时间（秒）
+            force: 是否强制取消（即使任务不在 RUNNING 状态）
             
         Returns:
-            是否成功
+            是否成功取消
         """
         result = self._active_spawns.get(spawn_id)
         if not result:
+            self.logger.warning(f"派生不存在: {spawn_id}")
             return False
+        
+        # 检查状态
+        if not force and result.status != SpawnStatus.RUNNING:
+            self.logger.debug(f"派生不在运行状态: {spawn_id} ({result.status.value})")
+            return False
+        
+        # 获取任务引用
+        async with self._task_lock:
+            task = self._spawn_tasks.get(spawn_id)
+        
+        if task and not task.done():
+            self.logger.info(f"正在取消派生任务: {spawn_id}")
             
+            # 发送取消信号
+            task.cancel()
+            
+            try:
+                # 等待任务完成（或超时）
+                await asyncio.wait_for(
+                    asyncio.shield(task),
+                    timeout=timeout,
+                )
+            except asyncio.CancelledError:
+                # 任务成功取消
+                self.logger.info(f"派生任务已取消: {spawn_id}")
+            except asyncio.TimeoutError:
+                # 取消超时，强制标记
+                self.logger.warning(f"取消派生任务超时: {spawn_id}")
+            except Exception as e:
+                self.logger.error(f"取消派生任务时出错: {spawn_id}, {e}")
+        
+        # 更新状态
         if result.status == SpawnStatus.RUNNING:
             result.status = SpawnStatus.CANCELLED
-            # 实际的取消需要更复杂的实现
-            return True
-            
-        return False
+            result.error = "被用户或系统取消"
+            result.ended_at = datetime.now().isoformat()
+            self._cancelled_spawns += 1
         
-    async def stop_all_for_session(self, session_id: str) -> int:
+        # 清理任务引用
+        async with self._task_lock:
+            self._spawn_tasks.pop(spawn_id, None)
+        
+        return True
+        
+    async def stop_all_for_session(
+        self,
+        session_id: str,
+        timeout: float = 5.0,
+    ) -> int:
         """
         停止会话的所有子 Agent
         
         Args:
             session_id: 会话 ID
+            timeout: 每个任务的取消超时时间
             
         Returns:
             停止的数量
         """
-        count = 0
+        spawns_to_stop = []
+        
         for spawn_id, result in list(self._active_spawns.items()):
             if result.metadata.get("parent_session_id") == session_id:
-                if await self.stop_spawn(spawn_id):
-                    count += 1
-        return count
+                spawns_to_stop.append(spawn_id)
+        
+        # 并行取消所有任务
+        if spawns_to_stop:
+            self.logger.info(f"批量取消 {len(spawns_to_stop)} 个派生任务")
+            results = await asyncio.gather(
+                *[self.stop_spawn(spawn_id, timeout=timeout) for spawn_id in spawns_to_stop],
+                return_exceptions=True,
+            )
+            count = sum(1 for r in results if r is True)
+            return count
+        
+        return 0
+    
+    async def stop_all(self, timeout: float = 5.0) -> int:
+        """
+        停止所有正在运行的子 Agent（紧急停止）
+        
+        Args:
+            timeout: 每个任务的取消超时时间
+            
+        Returns:
+            停止的数量
+        """
+        running_spawns = [
+            spawn_id for spawn_id, result in self._active_spawns.items()
+            if result.status == SpawnStatus.RUNNING
+        ]
+        
+        if running_spawns:
+            self.logger.warning(f"紧急停止: 取消 {len(running_spawns)} 个派生任务")
+            results = await asyncio.gather(
+                *[self.stop_spawn(spawn_id, timeout=timeout, force=True) for spawn_id in running_spawns],
+                return_exceptions=True,
+            )
+            count = sum(1 for r in results if r is True)
+            return count
+        
+        return 0
         
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
@@ -523,11 +631,13 @@ class SubAgentSpawner(LoggerMixin):
             
         return {
             "total_active": len(self._active_spawns),
+            "running_tasks": len(self._spawn_tasks),
             "status_counts": status_counts,
             "pending_archives": len(self._archive_timers),
             "total_spawns": self._total_spawns,
             "successful_spawns": self._successful_spawns,
             "failed_spawns": self._failed_spawns,
+            "cancelled_spawns": self._cancelled_spawns,
             "success_rate": (
                 self._successful_spawns / self._total_spawns
                 if self._total_spawns > 0 else 0
@@ -535,6 +645,19 @@ class SubAgentSpawner(LoggerMixin):
             "enable_announce": self._enable_announce,
             "completion_callbacks": len(self._completion_callbacks),
         }
+    
+    async def get_running_tasks(self) -> List[str]:
+        """
+        获取正在运行的任务 ID 列表
+        
+        Returns:
+            正在运行的 spawn_id 列表
+        """
+        async with self._task_lock:
+            return [
+                spawn_id for spawn_id, task in self._spawn_tasks.items()
+                if not task.done()
+            ]
 
 
 # ============== 便捷函数 ==============

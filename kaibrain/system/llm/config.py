@@ -141,21 +141,84 @@ class LLMConfig(LoggerMixin):
         }
 
 
+# 已知的OpenAI兼容API端点
+OPENAI_COMPATIBLE_ENDPOINTS = {
+    "openai": "https://api.openai.com/v1",
+    "kimi": "https://api.moonshot.cn/v1",
+    "glm": "https://open.bigmodel.cn/api/paas/v4",
+    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "doubao": "https://ark.cn-beijing.volces.com/api/v3",
+    "deepseek": "https://api.deepseek.com/v1",
+    "yi": "https://api.lingyiwanwu.com/v1",
+    "baichuan": "https://api.baichuan-ai.com/v1",
+    "minimax": "https://api.minimax.chat/v1",
+}
+
+# 默认模型推荐
+DEFAULT_MODELS = {
+    "openai": "gpt-4o",
+    "kimi": "moonshot-v1-128k",
+    "glm": "glm-4-plus",
+    "qwen": "qwen-max",
+    "doubao": "doubao-pro-32k",
+    "deepseek": "deepseek-chat",
+    "yi": "yi-large",
+    "baichuan": "Baichuan4",
+    "minimax": "abab6.5s-chat",
+    "anthropic": "claude-sonnet-4-20250514",
+    "ollama": "llama3.2",
+}
+
+
 # 默认配置
 DEFAULT_LLM_CONFIG = LLMConfig(
     default_provider="openai",
     providers={
+        # OpenAI
         "openai": ProviderConfig(
             api_key="${OPENAI_API_KEY}",
             model="gpt-4o",
         ),
+        # Anthropic Claude
         "anthropic": ProviderConfig(
             api_key="${ANTHROPIC_API_KEY}",
             model="claude-sonnet-4-20250514",
         ),
+        # 本地模型 Ollama
         "ollama": ProviderConfig(
             model="llama3.2",
             base_url="http://localhost:11434",
+        ),
+        # ========== 国产大模型 (OpenAI兼容) ==========
+        # Kimi (Moonshot AI)
+        "kimi": ProviderConfig(
+            api_key="${KIMI_API_KEY}",
+            model="moonshot-v1-128k",
+            base_url="https://api.moonshot.cn/v1",
+        ),
+        # GLM (智谱清言)
+        "glm": ProviderConfig(
+            api_key="${GLM_API_KEY}",
+            model="glm-4-plus",
+            base_url="https://open.bigmodel.cn/api/paas/v4",
+        ),
+        # Qwen (通义千问)
+        "qwen": ProviderConfig(
+            api_key="${QWEN_API_KEY}",
+            model="qwen-max",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        ),
+        # Doubao (字节豆包)
+        "doubao": ProviderConfig(
+            api_key="${DOUBAO_API_KEY}",
+            model="doubao-pro-32k",
+            base_url="https://ark.cn-beijing.volces.com/api/v3",
+        ),
+        # DeepSeek
+        "deepseek": ProviderConfig(
+            api_key="${DEEPSEEK_API_KEY}",
+            model="deepseek-chat",
+            base_url="https://api.deepseek.com/v1",
         ),
     },
 )

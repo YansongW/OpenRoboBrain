@@ -44,6 +44,11 @@ from kaibrain.agent.runtime.tool_executor import (
     ToolCall,
     ToolResult,
 )
+from kaibrain.agent.security.tool_policy import (
+    ToolPolicy,
+    ToolPolicyConfig,
+    create_tool_policy,
+)
 from kaibrain.agent.runtime.stream_handler import (
     StreamHandler,
     StreamEvent,
@@ -81,6 +86,12 @@ class RuntimeConfig:
     default_model: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 4096
+    
+    # 安全配置
+    tool_policy_profile: Optional[str] = None  # 工具策略预设：full, coding, messaging, readonly, safe
+    tool_policy_allow: Optional[List[str]] = None  # 允许的工具列表
+    tool_policy_deny: Optional[List[str]] = None  # 拒绝的工具列表
+    enforce_tool_policy: bool = True  # 是否强制执行工具策略
     
     # 其他
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -123,6 +134,7 @@ class AgentRuntime(LoggerMixin):
         self._context_builder: Optional[ContextBuilder] = None
         self._tool_executor: Optional[ToolExecutor] = None
         self._stream_handler: Optional[StreamHandler] = None
+        self._tool_policy: Optional[ToolPolicy] = None
         
         # 推理函数
         self._inference_func: Optional[InferenceFunc] = None
@@ -160,6 +172,11 @@ class AgentRuntime(LoggerMixin):
     def tool_registry(self) -> Optional[ToolRegistry]:
         """工具注册表"""
         return self._tool_executor.registry if self._tool_executor else None
+    
+    @property
+    def tool_policy(self) -> Optional[ToolPolicy]:
+        """工具策略"""
+        return self._tool_policy
         
     @property
     def is_initialized(self) -> bool:
@@ -213,10 +230,27 @@ class AgentRuntime(LoggerMixin):
                 agent_id=self._agent_id,
             )
             
-            # 4. 初始化 Tool Executor
-            self._tool_executor = ToolExecutor()
+            # 4. 初始化工具策略
+            if (self._config.tool_policy_profile or 
+                self._config.tool_policy_allow or 
+                self._config.tool_policy_deny):
+                self._tool_policy = create_tool_policy(
+                    profile=self._config.tool_policy_profile,
+                    allow=self._config.tool_policy_allow,
+                    deny=self._config.tool_policy_deny,
+                )
+                self.logger.info(
+                    f"工具策略已配置: profile={self._config.tool_policy_profile}, "
+                    f"enforce={self._config.enforce_tool_policy}"
+                )
             
-            # 5. 初始化 Context Builder
+            # 5. 初始化 Tool Executor（传递策略）
+            self._tool_executor = ToolExecutor(
+                policy=self._tool_policy,
+                enforce_policy=self._config.enforce_tool_policy,
+            )
+            
+            # 6. 初始化 Context Builder
             context_config = ContextConfig(
                 max_history_messages=self._config.max_history_messages,
                 max_context_tokens=self._config.max_context_tokens,
@@ -225,7 +259,7 @@ class AgentRuntime(LoggerMixin):
             )
             self._context_builder = ContextBuilder(context_config, self._workspace)
             
-            # 6. 初始化 Agent Loop
+            # 7. 初始化 Agent Loop
             loop_config = LoopConfig(
                 max_iterations=self._config.max_iterations,
                 timeout_seconds=self._config.timeout_seconds,
@@ -239,7 +273,7 @@ class AgentRuntime(LoggerMixin):
                 session_store=self._session_store,
             )
             
-            # 7. 初始化 Stream Handler
+            # 8. 初始化 Stream Handler
             self._stream_handler = create_stream_handler(
                 use_chunking=self._config.enable_streaming,
             )
@@ -262,6 +296,18 @@ class AgentRuntime(LoggerMixin):
         self._inference_func = func
         if self._loop:
             self._loop.set_inference_func(func)
+    
+    def set_tool_policy(self, policy: Optional[ToolPolicy]) -> None:
+        """
+        设置工具策略
+        
+        Args:
+            policy: 工具策略（None 表示移除策略）
+        """
+        self._tool_policy = policy
+        if self._tool_executor:
+            self._tool_executor.set_policy(policy)
+        self.logger.info(f"工具策略已更新: {'已配置' if policy else '无'}")
             
     def register_tool(
         self,
