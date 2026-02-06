@@ -280,6 +280,7 @@ class BrainCerebellumBridge(LoggerMixin):
         self,
         brain_server: Optional["BrainWebSocketServer"] = None,
         cerebellum_node: Optional["ROS2Node"] = None,
+        mock_mode: bool = True,
     ):
         """
         初始化桥接器
@@ -287,9 +288,11 @@ class BrainCerebellumBridge(LoggerMixin):
         Args:
             brain_server: 大脑 WebSocket 服务器
             cerebellum_node: 小脑 ROS2 节点
+            mock_mode: 是否使用模拟模式（不连接真实ROS2）
         """
         self._brain_server = brain_server
         self._cerebellum_node = cerebellum_node
+        self._mock_mode = mock_mode
         
         self._running = False
         
@@ -383,6 +386,24 @@ class BrainCerebellumBridge(LoggerMixin):
         Returns:
             执行反馈
         """
+        self.logger.info(f"发送命令: {command.command_type} (mock={self._mock_mode})")
+        
+        # 模拟模式 - 直接返回成功
+        if self._mock_mode:
+            self.logger.debug(f"[Mock] 模拟执行命令: {command.command_type}")
+            self.logger.debug(f"[Mock] 命令参数: {command.parameters}")
+            
+            # 保存命令（用于追踪）
+            self._pending_commands[command.command_id] = command
+            
+            return CerebellumFeedback(
+                command_id=command.command_id,
+                status=ExecutionStatus.COMPLETED,
+                progress=1.0,
+                sensor_data={"mock": True},
+            )
+        
+        # 真实模式 - 转换并发送
         # 转换命令
         actions = self._translate_command(command)
         if not actions:

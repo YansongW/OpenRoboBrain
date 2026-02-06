@@ -27,6 +27,11 @@ class MessageType(Enum):
     AGENT_HEARTBEAT = "agent_heartbeat"    # Agent心跳
     AGENT_STATUS = "agent_status"       # Agent状态
     
+    # Agent 间通信
+    AGENT_MESSAGE = "agent_message"     # Agent间普通消息
+    AGENT_REQUEST = "agent_request"     # Agent间请求
+    AGENT_RESPONSE = "agent_response"   # Agent间响应
+    
     # 数据相关
     DATA_QUERY = "data_query"           # 数据查询
     DATA_RESPONSE = "data_response"     # 数据响应

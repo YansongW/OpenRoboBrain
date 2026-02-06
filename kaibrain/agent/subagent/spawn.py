@@ -381,7 +381,7 @@ class SubAgentSpawner(LoggerMixin):
         except asyncio.CancelledError:
             result.status = SpawnStatus.CANCELLED
             result.error = "执行被取消"
-            self._failed_spawns += 1
+            # 取消不计入失败，由 stop_spawn() 单独统计 _cancelled_spawns
             
         except Exception as e:
             result.status = SpawnStatus.ERROR
@@ -518,8 +518,10 @@ class SubAgentSpawner(LoggerMixin):
             self.logger.warning(f"派生不存在: {spawn_id}")
             return False
         
-        # 检查状态
-        if not force and result.status != SpawnStatus.RUNNING:
+        # 检查状态并提前记录是否需要增加计数
+        was_running = result.status == SpawnStatus.RUNNING
+        
+        if not force and not was_running:
             self.logger.debug(f"派生不在运行状态: {spawn_id} ({result.status.value})")
             return False
         
@@ -548,12 +550,16 @@ class SubAgentSpawner(LoggerMixin):
             except Exception as e:
                 self.logger.error(f"取消派生任务时出错: {spawn_id}, {e}")
         
-        # 更新状态
-        if result.status == SpawnStatus.RUNNING:
-            result.status = SpawnStatus.CANCELLED
-            result.error = "被用户或系统取消"
-            result.ended_at = datetime.now().isoformat()
+        # 如果任务之前是运行状态，增加取消计数
+        # 注意：_execute_subagent 中的 CancelledError 处理会更新状态，
+        # 所以这里使用之前保存的 was_running 来决定是否增加计数
+        if was_running:
             self._cancelled_spawns += 1
+            # 确保状态被标记为已取消（可能已经被 _execute_subagent 设置）
+            if result.status != SpawnStatus.CANCELLED:
+                result.status = SpawnStatus.CANCELLED
+                result.error = "被用户或系统取消"
+                result.ended_at = datetime.now().isoformat()
         
         # 清理任务引用
         async with self._task_lock:

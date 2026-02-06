@@ -119,6 +119,7 @@ class BehaviorExecutor(LoggerMixin):
         user_input: str,
         parameters: Optional[Dict[str, Any]] = None,
         timeout: Optional[float] = None,
+        trace_id: Optional[str] = None,
     ) -> BehaviorResult:
         """
         执行指定行为
@@ -128,6 +129,7 @@ class BehaviorExecutor(LoggerMixin):
             user_input: 用户输入
             parameters: 参数
             timeout: 超时时间
+            trace_id: 追踪ID
             
         Returns:
             执行结果
@@ -147,6 +149,7 @@ class BehaviorExecutor(LoggerMixin):
             user_input,
             parameters,
             timeout,
+            trace_id,
         )
     
     async def auto_execute(
@@ -154,6 +157,7 @@ class BehaviorExecutor(LoggerMixin):
         user_input: str,
         parameters: Optional[Dict[str, Any]] = None,
         timeout: Optional[float] = None,
+        trace_id: Optional[str] = None,
     ) -> BehaviorResult:
         """
         自动匹配并执行行为
@@ -162,6 +166,7 @@ class BehaviorExecutor(LoggerMixin):
             user_input: 用户输入
             parameters: 参数
             timeout: 超时时间
+            trace_id: 追踪ID
             
         Returns:
             执行结果
@@ -171,6 +176,17 @@ class BehaviorExecutor(LoggerMixin):
             user_input,
             threshold=self._config.auto_match_threshold,
         )
+        
+        # 如果没有高置信度匹配，使用通用行为作为兜底
+        if not behavior:
+            self.logger.info("未找到高置信度匹配，使用通用行为")
+            behavior = self._registry.get("general")
+            
+            if not behavior:
+                # 创建并注册通用行为
+                from kaibrain.behavior.builtin.general import GeneralBehavior
+                behavior = GeneralBehavior()
+                self._registry.register(behavior)
         
         if not behavior:
             return BehaviorResult(
@@ -187,6 +203,7 @@ class BehaviorExecutor(LoggerMixin):
             user_input,
             parameters,
             timeout,
+            trace_id,
         )
     
     async def _execute_behavior(
@@ -195,6 +212,7 @@ class BehaviorExecutor(LoggerMixin):
         user_input: str,
         parameters: Optional[Dict[str, Any]],
         timeout: Optional[float],
+        trace_id: Optional[str] = None,
     ) -> BehaviorResult:
         """执行行为"""
         actual_timeout = timeout or self._config.default_timeout
@@ -205,6 +223,7 @@ class BehaviorExecutor(LoggerMixin):
             context = BehaviorContext(
                 user_input=user_input,
                 parameters=parameters or {},
+                trace_id=trace_id or "",
             )
             
             self._running_behaviors[context.behavior_id] = context
@@ -212,7 +231,7 @@ class BehaviorExecutor(LoggerMixin):
             try:
                 # 执行（带超时）
                 result = await asyncio.wait_for(
-                    behavior.run(user_input, parameters, context),
+                    behavior.run(user_input, parameters, context, trace_id=trace_id),
                     timeout=actual_timeout,
                 )
                 
@@ -253,6 +272,7 @@ class BehaviorExecutor(LoggerMixin):
         self,
         requests: List[Dict[str, Any]],
         parallel: bool = True,
+        trace_id: Optional[str] = None,
     ) -> List[BehaviorResult]:
         """
         批量执行行为
@@ -260,6 +280,7 @@ class BehaviorExecutor(LoggerMixin):
         Args:
             requests: 请求列表 [{"behavior": "name", "input": "...", "params": {...}}]
             parallel: 是否并行执行
+            trace_id: 追踪ID
             
         Returns:
             结果列表
@@ -270,6 +291,7 @@ class BehaviorExecutor(LoggerMixin):
                     req.get("behavior", ""),
                     req.get("input", ""),
                     req.get("params"),
+                    trace_id=req.get("trace_id", trace_id),
                 )
                 for req in requests
             ]
@@ -281,6 +303,7 @@ class BehaviorExecutor(LoggerMixin):
                     req.get("behavior", ""),
                     req.get("input", ""),
                     req.get("params"),
+                    trace_id=req.get("trace_id", trace_id),
                 )
                 results.append(result)
             return results

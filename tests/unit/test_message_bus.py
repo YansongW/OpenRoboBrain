@@ -22,12 +22,14 @@ from kaibrain.system.brain_pipeline.protocol import Message, MessageType
 class TestPendingRequest:
     """PendingRequest 测试"""
     
-    def test_is_expired_not_expired(self):
+    @pytest.mark.asyncio
+    async def test_is_expired_not_expired(self):
         """测试未过期"""
         pending = PendingRequest(future=asyncio.Future())
         assert pending.is_expired(ttl=300.0) is False
         
-    def test_is_expired_expired(self):
+    @pytest.mark.asyncio
+    async def test_is_expired_expired(self):
         """测试已过期"""
         import time
         pending = PendingRequest(future=asyncio.Future())

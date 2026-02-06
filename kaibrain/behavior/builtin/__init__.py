@@ -6,8 +6,10 @@
 
 from kaibrain.behavior.builtin.cooking import CookingBehavior
 from kaibrain.behavior.builtin.cleaning import CleaningBehavior
+from kaibrain.behavior.builtin.general import GeneralBehavior
 
 __all__ = [
     "CookingBehavior",
     "CleaningBehavior",
+    "GeneralBehavior",
 ]

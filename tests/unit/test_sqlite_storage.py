@@ -4,6 +4,7 @@ SQLite 存储适配器单元测试
 
 import asyncio
 import pytest
+import pytest_asyncio
 from pathlib import Path
 
 from kaibrain.data.storage.relational import (
@@ -71,7 +72,7 @@ class TestQueryResult:
 class TestSQLiteStorage:
     """SQLite 存储测试"""
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def storage(self) -> SQLiteStorage:
         """创建内存数据库存储"""
         config = DatabaseConfig(database=":memory:")
@@ -255,7 +256,7 @@ class TestSQLiteStorage:
 class TestMigrationManager:
     """迁移管理器测试"""
     
-    @pytest.fixture
+    @pytest_asyncio.fixture
     async def storage(self) -> SQLiteStorage:
         """创建内存数据库存储"""
         config = DatabaseConfig(database=":memory:")

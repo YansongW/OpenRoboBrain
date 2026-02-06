@@ -20,6 +20,7 @@ from kaibrain.behavior.base import (
     BehaviorStatus,
     BehaviorResult,
     BehaviorConfig,
+    BehaviorContext,
 )
 from kaibrain.behavior.registry import (
     BehaviorRegistry,
@@ -36,6 +37,7 @@ __all__ = [
     "BehaviorStatus",
     "BehaviorResult",
     "BehaviorConfig",
+    "BehaviorContext",
     
     # 注册表
     "BehaviorRegistry",

@@ -45,7 +45,7 @@ class AgentRegistry(LoggerMixin):
         agent_class: Type[BaseAgent],
         name: str,
         agent_type: str,
-        level: AgentLevel = AgentLevel.ATOMIC,
+        level: AgentLevel = AgentLevel.SKILL,
         config: Optional[Dict[str, Any]] = None,
         auto_start: bool = False,
         message_bus: Optional[Any] = None,

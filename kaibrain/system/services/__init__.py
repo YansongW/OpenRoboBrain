@@ -22,7 +22,25 @@ from kaibrain.system.services.risk_monitor import (
     run_risk_check,
 )
 
+from kaibrain.system.services.logger import (
+    get_logger,
+    setup_logging,
+    LoggerMixin,
+    Layer,
+    LogContext,
+    trace_context,
+    set_trace_context,
+    get_trace_context,
+    clear_trace_context,
+    BehaviorLoggerMixin,
+    CapabilityLoggerMixin,
+    AgentLoggerMixin,
+    SystemLoggerMixin,
+    BridgeLoggerMixin,
+)
+
 __all__ = [
+    # 风险监控
     "RiskMonitor",
     "RiskLevel",
     "RiskCategory",
@@ -31,4 +49,19 @@ __all__ = [
     "RiskReport",
     "get_risk_monitor",
     "run_risk_check",
+    # 日志服务
+    "get_logger",
+    "setup_logging",
+    "LoggerMixin",
+    "Layer",
+    "LogContext",
+    "trace_context",
+    "set_trace_context",
+    "get_trace_context",
+    "clear_trace_context",
+    "BehaviorLoggerMixin",
+    "CapabilityLoggerMixin",
+    "AgentLoggerMixin",
+    "SystemLoggerMixin",
+    "BridgeLoggerMixin",
 ]

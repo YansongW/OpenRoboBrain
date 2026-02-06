@@ -70,6 +70,9 @@ all = [
 Homepage = "https://github.com/kaibrain/kaibrain"
 Documentation = "https://kaibrain.readthedocs.io"
 
+[project.scripts]
+kaibrain = "kaibrain.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["kaibrain*"]

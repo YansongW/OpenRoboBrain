@@ -2,6 +2,7 @@
 行为基类
 
 定义行为的基本结构和生命周期。
+支持与Agent层（Orchestrator）的连接，收集BrainCommand。
 """
 
 from __future__ import annotations
@@ -13,10 +14,12 @@ from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 from uuid import uuid4
 
-from kaibrain.system.services.logger import LoggerMixin
+from kaibrain.system.services.logger import BehaviorLoggerMixin, trace_context, Layer
 
 if TYPE_CHECKING:
     from kaibrain.data.explicit.workflow_memory import WorkflowMemory
+    from kaibrain.agent.orchestrator.orchestrator import OrchestratorAgent
+    from kaibrain.system.brain_pipeline.brain_cerebellum_bridge import BrainCommand
 
 
 class BehaviorStatus(Enum):
@@ -97,6 +100,7 @@ class BehaviorContext:
     """行为执行上下文"""
     behavior_id: str = field(default_factory=lambda: str(uuid4()))
     request_id: str = ""
+    trace_id: str = ""  # 追踪ID，用于日志关联
     user_input: str = ""
     parameters: Dict[str, Any] = field(default_factory=dict)
     
@@ -110,16 +114,38 @@ class BehaviorContext:
     total_steps: int = 0
     started_at: str = field(default_factory=lambda: datetime.now().isoformat())
     
+    # 收集的ROS2命令
+    ros2_commands: List[Dict[str, Any]] = field(default_factory=list)
+    
+    # 对话响应
+    chat_response: str = ""
+    
     # 元数据
     metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def add_ros2_command(
+        self,
+        command_type: str,
+        parameters: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """添加ROS2命令"""
+        self.ros2_commands.append({
+            "command_type": command_type,
+            "parameters": parameters or {},
+        })
 
 
-class Behavior(ABC, LoggerMixin):
+class Behavior(ABC, BehaviorLoggerMixin):
     """
     行为基类
     
     行为是多个原子能力的组合，代表可复用的复杂行为模式。
     子类需要实现 `execute` 方法来定义具体的行为逻辑。
+    
+    支持：
+    - 与Orchestrator Agent连接
+    - 收集ROS2命令（通过BehaviorContext）
+    - 生成对话响应
     """
     
     def __init__(self, config: BehaviorConfig):
@@ -132,6 +158,7 @@ class Behavior(ABC, LoggerMixin):
         self._config = config
         self._status = BehaviorStatus.IDLE
         self._workflow_memory: Optional[WorkflowMemory] = None
+        self._orchestrator: Optional["OrchestratorAgent"] = None
         
         # 生命周期钩子
         self._before_execute_hooks: List[Callable] = []
@@ -163,9 +190,18 @@ class Behavior(ABC, LoggerMixin):
         """所需能力列表"""
         return self._config.required_capabilities
     
-    def set_workflow_memory(self, memory: WorkflowMemory) -> None:
+    def set_workflow_memory(self, memory: "WorkflowMemory") -> None:
         """设置工作流记忆"""
         self._workflow_memory = memory
+    
+    def set_orchestrator(self, orchestrator: "OrchestratorAgent") -> None:
+        """设置编排Agent"""
+        self._orchestrator = orchestrator
+    
+    @property
+    def orchestrator(self) -> Optional["OrchestratorAgent"]:
+        """获取编排Agent"""
+        return self._orchestrator
     
     def register_before_hook(self, hook: Callable) -> None:
         """注册执行前钩子"""
@@ -184,6 +220,7 @@ class Behavior(ABC, LoggerMixin):
         user_input: str,
         parameters: Optional[Dict[str, Any]] = None,
         context: Optional[BehaviorContext] = None,
+        trace_id: Optional[str] = None,
     ) -> BehaviorResult:
         """
         运行行为
@@ -192,6 +229,7 @@ class Behavior(ABC, LoggerMixin):
             user_input: 用户输入
             parameters: 参数
             context: 执行上下文
+            trace_id: 追踪ID
             
         Returns:
             执行结果
@@ -202,7 +240,12 @@ class Behavior(ABC, LoggerMixin):
         ctx = context or BehaviorContext(
             user_input=user_input,
             parameters=parameters or {},
+            trace_id=trace_id or f"trace-{uuid4().hex[:8]}",
         )
+        
+        # 如果提供了trace_id，更新上下文
+        if trace_id:
+            ctx.trace_id = trace_id
         
         result = BehaviorResult(
             behavior_id=ctx.behavior_id,
@@ -210,64 +253,86 @@ class Behavior(ABC, LoggerMixin):
             started_at=ctx.started_at,
         )
         
-        try:
-            # 准备阶段
-            self._status = BehaviorStatus.PREPARING
+        # 使用trace上下文
+        with trace_context(trace_id=ctx.trace_id, layer=Layer.BEHAVIOR, component=self.name):
+            try:
+                # 准备阶段
+                self._status = BehaviorStatus.PREPARING
+                self.logger.info(f"开始执行行为: {self.name}")
+                
+                # 检查工作流记忆
+                if self._config.enable_workflow_memory and self._workflow_memory:
+                    workflow = await self._match_workflow(user_input, parameters)
+                    if workflow:
+                        ctx.workflow_matched = True
+                        ctx.workflow_id = workflow["task_id"]
+                        ctx.previous_steps = workflow.get("exec_history", [])
+                        result.workflow_matched = True
+                        result.workflow_id = workflow["task_id"]
+                        self.logger.info(f"匹配到工作流: {workflow['task_id']}")
+                
+                # 执行前钩子
+                for hook in self._before_execute_hooks:
+                    await self._call_hook(hook, ctx)
+                
+                # 执行阶段
+                self._status = BehaviorStatus.EXECUTING
+                self.logger.info("执行行为逻辑...")
+                
+                # 执行行为逻辑
+                exec_result = await self.execute(ctx)
+                
+                # 完成
+                self._status = BehaviorStatus.COMPLETED
+                result.status = BehaviorStatus.COMPLETED
+                result.capabilities_used = self._config.required_capabilities
+                
+                # 合并执行结果，包含chat_response和ros2_commands
+                if isinstance(exec_result, dict):
+                    # 保留原始结果
+                    result.result = exec_result
+                    # 确保包含chat_response和ros2_commands
+                    if "chat_response" not in exec_result:
+                        exec_result["chat_response"] = ctx.chat_response
+                    if "ros2_commands" not in exec_result:
+                        exec_result["ros2_commands"] = ctx.ros2_commands
+                else:
+                    result.result = {
+                        "data": exec_result,
+                        "chat_response": ctx.chat_response,
+                        "ros2_commands": ctx.ros2_commands,
+                    }
+                
+                self.logger.info(f"行为执行完成，生成 {len(ctx.ros2_commands)} 个ROS2命令")
+                
+                # 执行后钩子
+                for hook in self._after_execute_hooks:
+                    await self._call_hook(hook, ctx, result)
+                
+                # 记录到工作流记忆
+                if self._config.enable_workflow_memory and self._workflow_memory:
+                    await self._record_execution(ctx, result)
+                
+            except Exception as e:
+                self._status = BehaviorStatus.FAILED
+                result.status = BehaviorStatus.FAILED
+                result.error = str(e)
+                self.logger.error(f"行为执行失败 {self.name}: {e}")
+                
+                # 错误钩子
+                for hook in self._on_error_hooks:
+                    await self._call_hook(hook, ctx, e)
+                
+                # 记录失败
+                if self._config.enable_workflow_memory and self._workflow_memory:
+                    await self._record_execution(ctx, result)
             
-            # 检查工作流记忆
-            if self._config.enable_workflow_memory and self._workflow_memory:
-                workflow = await self._match_workflow(user_input, parameters)
-                if workflow:
-                    ctx.workflow_matched = True
-                    ctx.workflow_id = workflow["task_id"]
-                    ctx.previous_steps = workflow.get("exec_history", [])
-                    result.workflow_matched = True
-                    result.workflow_id = workflow["task_id"]
-                    self.logger.info(f"匹配到工作流: {workflow['task_id']}")
-            
-            # 执行前钩子
-            for hook in self._before_execute_hooks:
-                await self._call_hook(hook, ctx)
-            
-            # 执行阶段
-            self._status = BehaviorStatus.EXECUTING
-            
-            # 执行行为逻辑
-            exec_result = await self.execute(ctx)
-            
-            # 完成
-            self._status = BehaviorStatus.COMPLETED
-            result.status = BehaviorStatus.COMPLETED
-            result.result = exec_result
-            result.capabilities_used = self._config.required_capabilities
-            
-            # 执行后钩子
-            for hook in self._after_execute_hooks:
-                await self._call_hook(hook, ctx, result)
-            
-            # 记录到工作流记忆
-            if self._config.enable_workflow_memory and self._workflow_memory:
-                await self._record_execution(ctx, result)
-            
-        except Exception as e:
-            self._status = BehaviorStatus.FAILED
-            result.status = BehaviorStatus.FAILED
-            result.error = str(e)
-            self.logger.error(f"行为执行失败 {self.name}: {e}")
-            
-            # 错误钩子
-            for hook in self._on_error_hooks:
-                await self._call_hook(hook, ctx, e)
-            
-            # 记录失败
-            if self._config.enable_workflow_memory and self._workflow_memory:
-                await self._record_execution(ctx, result)
-        
-        finally:
-            end_time = datetime.now()
-            result.ended_at = end_time.isoformat()
-            result.duration_ms = (end_time - start_time).total_seconds() * 1000
-            self._status = BehaviorStatus.IDLE
+            finally:
+                end_time = datetime.now()
+                result.ended_at = end_time.isoformat()
+                result.duration_ms = (end_time - start_time).total_seconds() * 1000
+                self._status = BehaviorStatus.IDLE
+                self.logger.info(f"行为耗时: {result.duration_ms:.2f}ms")
         
         return result
     

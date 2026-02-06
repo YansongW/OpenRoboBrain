@@ -47,7 +47,7 @@ class AtomicAgent(BaseAgent):
         super().__init__(
             name=name,
             agent_type=agent_type,
-            level=AgentLevel.ATOMIC,
+            level=AgentLevel.SKILL,
             message_bus=message_bus,
             config=config,
         )

@@ -227,12 +227,35 @@ class BehaviorRegistry(LoggerMixin):
 _global_registry: Optional[BehaviorRegistry] = None
 
 
-def get_registry() -> BehaviorRegistry:
-    """获取全局行为注册表"""
+def get_registry(
+    auto_register_builtin: bool = True,
+) -> BehaviorRegistry:
+    """
+    获取全局行为注册表
+    
+    Args:
+        auto_register_builtin: 是否自动注册内置行为
+        
+    Returns:
+        BehaviorRegistry实例
+    """
     global _global_registry
     if _global_registry is None:
         _global_registry = BehaviorRegistry()
+        
+        # 自动注册内置行为
+        if auto_register_builtin:
+            _register_builtin_behaviors(_global_registry)
+    
     return _global_registry
+
+
+def _register_builtin_behaviors(registry: BehaviorRegistry) -> None:
+    """注册内置行为"""
+    from kaibrain.behavior.builtin.general import GeneralBehavior
+    
+    # GeneralBehavior作为默认兜底行为
+    registry.register(GeneralBehavior())
 
 
 def register_behavior(behavior: Behavior) -> None:

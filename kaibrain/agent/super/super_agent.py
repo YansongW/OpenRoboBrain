@@ -268,7 +268,7 @@ class SuperAgent(BaseAgent):
         agent_class: Type[BaseAgent],
         name: str,
         agent_type: str,
-        level: AgentLevel = AgentLevel.ATOMIC,
+        level: AgentLevel = AgentLevel.SKILL,
         config: Optional[Dict[str, Any]] = None,
         auto_start: bool = True,
     ) -> AgentInfo:
