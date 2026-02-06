@@ -201,14 +201,14 @@ class ASREngine:
         return text if text else None
 
     def is_available(self) -> bool:
-        """检查音频设备是否可用"""
+        """检查麦克风是否可用"""
         try:
             import sounddevice as sd
-            devices = sd.query_devices()
-            # 检查是否有输入设备
-            for d in devices if isinstance(devices, list) else [devices]:
-                if isinstance(d, dict) and d.get("max_input_channels", 0) > 0:
-                    return True
-            return False
+            # 直接查询默认输入设备
+            default_input = sd.default.device[0]
+            if default_input is None or default_input < 0:
+                return False
+            info = sd.query_devices(default_input)
+            return info.get("max_input_channels", 0) > 0
         except Exception:
             return False
