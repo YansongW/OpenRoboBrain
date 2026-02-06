@@ -350,6 +350,17 @@
 
 ---
 
+## MuJoCo G1 仿真风险 (feature/mujoco-g1-sim)
+
+| ID | 风险 | 影响 | 状态 | 缓解方案 |
+|----|------|------|------|---------|
+| RISK-SIM-001 | G1 23DOF XML 缺少 damping/armature/frictionloss | 初始化时腿部偏移 | 已规避 | 在 XML `<compiler>` 后加 `<default><joint damping="0.1" armature="0.01" frictionloss="0.1"/></default>` (参考 unitree_rl_gym#47) |
+| RISK-SIM-002 | MuJoCo 3.2.6 Windows DLL 初始化失败 | MuJoCo 无法启动 | 已规避 | 固定 `mujoco>=3.1.6` |
+| RISK-SIM-003 | 直接加载训练 checkpoint 报 PytorchStreamReader 错误 | 策略无法加载 | 已规避 | 使用 `deploy/pre_train/g1/motion.pt` (已导出策略), 不用训练 checkpoint (参考 unitree_rl_gym#21) |
+| RISK-SIM-004 | 预训练策略冻结手臂 | 无法展示抓取动作 | 已知限制 | 手臂控制作为后续迭代 |
+
+---
+
 ## 相关文档
 
 - [BUGS.md](./BUGS.md) - BUG跟踪

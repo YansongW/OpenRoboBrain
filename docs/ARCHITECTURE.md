@@ -369,3 +369,44 @@ if critical_risks:
 - [RISKS.md](./RISKS.md) - 完整风险清单
 - [BUGS.md](./BUGS.md) - BUG跟踪列表
 - [TODO.md](./TODO.md) - 待办任务
+
+---
+
+## 8. MuJoCo G1 仿真架构 (feature/mujoco-g1-sim)
+
+### 8.1 三终端通信架构
+
+```
+终端1 (CLI)                终端2 (ROS2 Monitor)      终端3 (MuJoCo G1)
+    |                           |                         |
+    v                           |                         |
+OpenRoboBrain.process()         |                         |
+    |                           |                         |
+    v                           |                         |
+AgentLoop -> Ollama LLM         |                         |
+    |                           |                         |
+    v                           |                         |
+BrainCerebellumBridge           |                         |
+    |                           |                         |
+    v                           v                         v
+CommandBroadcaster -------> WebSocket :8765 ---------> ws client
+                          (JSON broadcast)           cmd -> RL Policy
+                                                     -> PD Control
+                                                     -> MuJoCo Step
+```
+
+### 8.2 命令流转
+
+1. 用户自然语言输入 -> AgentLoop -> LLM 推理 (Ollama Qwen2.5)
+2. LLM 输出 JSON (chat_response + ros2_commands)
+3. BrainCommand 通过 Bridge 执行 + 通过 WebSocket 广播
+4. ROS2 Monitor 以 Topic 格式显示
+5. MuJoCo 终端将 command_type 映射为速度指令 [vx, vy, wz]
+6. unitree_rl_gym 预训练策略推理 -> 关节力矩 -> MuJoCo 步进 -> 渲染
+
+### 8.3 技术栈
+
+- **LLM**: Ollama + Qwen2.5:3b (本地, Tool Calling)
+- **策略**: unitree_rl_gym/deploy/pre_train/g1/motion.pt (PPO, 29-DOF)
+- **仿真**: MuJoCo (Python) + G1 MJCF 模型
+- **通信**: WebSocket (JSON) 松耦合广播

@@ -45,6 +45,21 @@
 - [x] **T-012** Phase 2 集成测试 ✅
   - 状态: 已完成（9个集成测试通过）
 
+### Phase 3 (已完成)
+
+- [x] **D-106** 核心管线贯通 -- core.py LLM/规则双模式 ✅
+- [x] **D-105** Memory 工具注册 -- memory_write/search/get ✅
+- [x] **D-107** CLI 增强 -- /memory、/stats 命令 ✅
+- [x] **T-013** Phase 3 集成测试 (15个测试) ✅
+
+### MuJoCo G1 仿真 (feature/mujoco-g1-sim 分支)
+
+- [x] **SIM-001** Ollama 自动检测 ✅
+- [x] **SIM-002** WebSocket 命令广播器 ✅
+- [x] **SIM-003** ROS2 报文监控终端 ✅
+- [x] **SIM-004** MuJoCo G1 仿真终端 (unitree_rl_gym 策略) ✅
+- [x] **SIM-005** 三终端启动脚本 ✅
+
 ### 已完成 (第一阶段)
 
 - [x] **D-001** Agent运行时主循环完善 ✅

@@ -282,8 +282,26 @@
 
 ---
 
-## 会议/同步
+## 里程碑
 
-- [ ] 周例会：进度同步，问题讨论
-- [ ] 代码评审：PR必须review
-- [ ] 技术分享：关键设计决策记录
+### M1: 核心框架 (已完成)
+- 七层架构设计
+- Agent 系统 (Super/Orchestrator/Atomic)
+- 消息总线、LLM Provider、工具系统
+
+### M2: 智能管线 (已完成)
+- AgentLoop + LLMInferenceAdapter (ReAct 循环)
+- MemoryRanker (5信号类人记忆排序)
+- SessionCompactor (自动会话压缩)
+- 核心管线贯通 (LLM/规则双模式)
+
+### M3: MuJoCo G1 仿真 (进行中, feature/mujoco-g1-sim)
+- Ollama 本地 LLM 集成
+- WebSocket 命令广播
+- unitree_rl_gym 预训练行走策略
+- 三终端联动演示
+
+### M4: 硬件集成 (计划中)
+- ROS2 真实通信
+- 传感器/执行器驱动
+- Sim2Real 策略迁移

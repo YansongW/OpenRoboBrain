@@ -127,6 +127,9 @@ class OpenRoboBrain:
         self._memory_stream: Optional["MemoryStream"] = None
         self._memory_ranker: Optional["MemoryRanker"] = None
         
+        # 广播器
+        self._broadcaster = None
+        
         # 状态
         self._running = False
         self._llm_available = False
@@ -174,7 +177,15 @@ class OpenRoboBrain:
         # 7. 初始化记忆系统
         self._init_memory_system()
         
-        # 8. 注册 Memory 工具到 ToolExecutor (如果 LLM 管线可用)
+        # 8. 启动命令广播器 (WebSocket, 供 ROS2 监控和 MuJoCo 仿真订阅)
+        try:
+            from orb.system.brain_pipeline.command_broadcaster import get_broadcaster
+            self._broadcaster = get_broadcaster()
+            await self._broadcaster.start()
+        except Exception as e:
+            logger.debug(f"命令广播器启动跳过: {e}")
+        
+        # 9. 注册 Memory 工具到 ToolExecutor (如果 LLM 管线可用)
         if self._tool_executor and self._memory_stream:
             from orb.system.tools.builtin.memory import register_memory_tools
             register_memory_tools(
@@ -279,12 +290,59 @@ class OpenRoboBrain:
         """
         从环境变量创建 LLM 实例
         
-        按优先级检查: OPENAI_API_KEY -> DEEPSEEK_API_KEY -> KIMI_API_KEY -> ...
+        优先级: Ollama (本地) -> OPENAI_API_KEY -> DEEPSEEK_API_KEY -> ...
         """
         from orb.system.llm.factory import LLMFactory
         from orb.system.llm.config import ProviderConfig, OPENAI_COMPATIBLE_ENDPOINTS
         
-        # 按优先级检查环境变量
+        # 1. 优先检查 Ollama (本地模型，无需 API Key)
+        ollama_model = os.environ.get("OLLAMA_MODEL")
+        ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+        
+        if ollama_model:
+            # 显式指定了 Ollama 模型
+            try:
+                llm = LLMFactory.create(
+                    "ollama",
+                    model=ollama_model,
+                    base_url=ollama_base_url,
+                )
+                logger.info(f"使用 Ollama 本地模型: {ollama_model} ({ollama_base_url})")
+                return llm
+            except Exception as e:
+                logger.warning(f"Ollama 创建失败: {e}")
+        else:
+            # 自动探测本地 Ollama 服务
+            try:
+                import urllib.request
+                req = urllib.request.Request(f"{ollama_base_url}/api/tags", method="GET")
+                with urllib.request.urlopen(req, timeout=2) as resp:
+                    if resp.status == 200:
+                        import json as _json
+                        data = _json.loads(resp.read())
+                        models = data.get("models", [])
+                        if models:
+                            # 优先选择 qwen 系列, 其次任意可用模型
+                            model_names = [m.get("name", "") for m in models]
+                            chosen = None
+                            for preferred in ["qwen2.5:3b", "qwen3:8b", "qwen2.5:7b", "llama3.1:8b"]:
+                                if preferred in model_names:
+                                    chosen = preferred
+                                    break
+                            if not chosen:
+                                chosen = model_names[0]
+                            
+                            llm = LLMFactory.create(
+                                "ollama",
+                                model=chosen,
+                                base_url=ollama_base_url,
+                            )
+                            logger.info(f"自动检测到 Ollama 本地模型: {chosen}")
+                            return llm
+            except Exception:
+                pass  # Ollama 不可用，继续检查云端 API
+        
+        # 2. 检查云端 API Key
         providers = [
             ("openai", "OPENAI_API_KEY", None, "gpt-4o"),
             ("deepseek", "DEEPSEEK_API_KEY", OPENAI_COMPATIBLE_ENDPOINTS.get("deepseek"), "deepseek-chat"),
@@ -375,6 +433,10 @@ class OpenRoboBrain:
                 logger.info(f"记忆已保存: {self._memory_stream.size} 条")
             except Exception as e:
                 logger.warning(f"保存记忆失败: {e}")
+        
+        # 停止广播器
+        if self._broadcaster:
+            await self._broadcaster.stop()
         
         # 停止桥接器
         if self._bridge:
@@ -619,7 +681,7 @@ class OpenRoboBrain:
         trace_id: str,
         result: ProcessResult,
     ) -> None:
-        """发送 ROS2 命令到 Bridge"""
+        """发送 ROS2 命令到 Bridge 并广播到 WebSocket"""
         from orb.system.brain_pipeline.brain_cerebellum_bridge import BrainCommand
         
         for cmd_data in ros2_cmds:
@@ -631,9 +693,14 @@ class OpenRoboBrain:
                 )
                 result.ros2_commands.append(cmd)
                 
+                # 发送到 Bridge
                 if self._bridge:
                     logger.info(f"[{trace_id}] 发送ROS2命令: {cmd.command_type}")
                     await self._bridge.send_command(cmd)
+                
+                # 广播到 WebSocket (供 ROS2 监控和 MuJoCo 仿真)
+                if self._broadcaster and self._broadcaster.is_running:
+                    await self._broadcaster.broadcast_command(cmd.to_dict())
     
     def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:
         """解析 LLM 响应 (可能是 JSON 或纯文本)"""
