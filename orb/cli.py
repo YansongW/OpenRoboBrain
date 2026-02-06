@@ -1,4 +1,4 @@
-﻿"""
+"""
 OpenRoboBrain 命令行界面
 
 提供REPL交互界面，支持自然语言输入，
@@ -14,7 +14,7 @@ import time
 from datetime import datetime
 from typing import Optional
 
-from orb.core import orb, ProcessResult
+from orb.core import OpenRoboBrain, ProcessResult
 from orb.system.services.logger import setup_logging, Layer
 
 
@@ -51,10 +51,11 @@ class ORBCLI:
     """
     OpenRoboBrain 命令行界面
     
-    功能：
+    功能:
     - REPL交互循环
-    - 显示chat响应
-    - 显示ROS2控制命令
+    - 显示chat响应和ROS2控制命令
+    - /memory 查看记忆状态
+    - /stats 显示系统统计
     - 支持verbose详细模式
     """
     
@@ -63,37 +64,26 @@ class ORBCLI:
         verbose: bool = False,
         mock_ros2: bool = True,
     ):
-        """
-        初始化CLI
-        
-        Args:
-            verbose: 是否显示详细信息
-            mock_ros2: 是否使用模拟ROS2
-        """
         self.verbose = verbose
         self.mock_ros2 = mock_ros2
         self.brain: Optional[OpenRoboBrain] = None
         self._running = False
     
     async def initialize(self) -> bool:
-        """
-        初始化OpenRoboBrain
-        
-        Returns:
-            是否成功
-        """
+        """初始化OpenRoboBrain"""
         try:
             print(colorize("正在初始化 OpenRoboBrain...", Colors.CYAN))
             
-            # 创建并初始化OpenRoboBrain
             self.brain = OpenRoboBrain(mock_ros2=self.mock_ros2)
             await self.brain.initialize()
+            await self.brain.start()
             
-            print(colorize("✓ OpenRoboBrain 初始化完成", Colors.GREEN))
+            mode = "LLM" if self.brain.llm_available else "规则"
+            print(colorize(f"  OpenRoboBrain 初始化完成 (模式: {mode})", Colors.GREEN))
             return True
             
         except Exception as e:
-            print(colorize(f"✗ 初始化失败: {e}", Colors.RED))
+            print(colorize(f"  初始化失败: {e}", Colors.RED))
             return False
     
     async def shutdown(self) -> None:
@@ -101,19 +91,23 @@ class ORBCLI:
         if self.brain:
             print(colorize("\n正在关闭 OpenRoboBrain...", Colors.CYAN))
             await self.brain.stop()
-            print(colorize("✓ 已安全关闭", Colors.GREEN))
+            print(colorize("  已安全关闭", Colors.GREEN))
     
     def print_banner(self) -> None:
         """打印欢迎横幅"""
+        mode = "LLM" if (self.brain and self.brain.llm_available) else "规则"
         banner = f"""
 {colorize("=" * 60, Colors.CYAN)}
-{colorize("  OpenRoboBrain - 机器人智能大脑系统", Colors.BRIGHT_CYAN + Colors.BOLD)}
+{colorize("  OpenRoboBrain (ORB) - 机器人智能大脑系统", Colors.BRIGHT_CYAN + Colors.BOLD)}
 {colorize("=" * 60, Colors.CYAN)}
 
-  命令：
+  处理模式: {colorize(mode, Colors.GREEN if mode == "LLM" else Colors.YELLOW)}
+  
+  命令:
     {colorize("/help", Colors.YELLOW)}     - 显示帮助
+    {colorize("/memory", Colors.YELLOW)}   - 查看记忆状态
+    {colorize("/stats", Colors.YELLOW)}    - 系统统计信息
     {colorize("/verbose", Colors.YELLOW)}  - 切换详细模式 (当前: {colorize("开" if self.verbose else "关", Colors.GREEN if self.verbose else Colors.RED)})
-    {colorize("/status", Colors.YELLOW)}   - 显示系统状态
     {colorize("/quit", Colors.YELLOW)}     - 退出程序
 
   直接输入自然语言与机器人交互。
@@ -128,8 +122,10 @@ class ORBCLI:
 
 {colorize("命令:", Colors.YELLOW)}
   /help      显示此帮助信息
+  /memory    查看记忆系统状态和最近记忆
+  /stats     显示系统统计（AgentLoop、Memory、Compaction）
+  /status    显示运行状态
   /verbose   切换详细模式（显示trace_id、执行时间等）
-  /status    显示系统状态
   /clear     清空屏幕
   /quit      退出程序
 
@@ -140,113 +136,148 @@ class ORBCLI:
   > 停下来
 """
         print(help_text)
-    
-    def print_status(self) -> None:
-        """打印系统状态"""
+
+    def print_memory(self) -> None:
+        """打印记忆系统状态"""
+        if not self.brain or not self.brain.memory_stream:
+            print(colorize("记忆系统未初始化", Colors.RED))
+            return
+        
+        stream = self.brain.memory_stream
+        stats = stream.get_stats()
+        
+        print(f"\n{colorize('记忆系统状态', Colors.BRIGHT_CYAN + Colors.BOLD)}")
+        print(colorize("-" * 40, Colors.DIM))
+        print(f"  总记忆数:     {stats['total_memories']}")
+        print(f"  活跃记忆:     {stats['active_memories']}")
+        print(f"  平均重要性:   {stats['avg_importance']:.1f}/10")
+        print(f"  平均强度:     {stats['avg_strength']:.1f}")
+        print(f"  总添加:       {stats['total_added']}")
+        print(f"  总检索:       {stats['total_retrieved']}")
+        
+        # 类型统计
+        type_counts = stats.get('type_counts', {})
+        if any(v > 0 for v in type_counts.values()):
+            print(f"\n  {colorize('按类型:', Colors.YELLOW)}")
+            for t, c in type_counts.items():
+                if c > 0:
+                    print(f"    {t}: {c}")
+        
+        # 最近记忆
+        memories = stream.get_all()
+        if memories:
+            recent = sorted(memories, key=lambda m: m.created_at, reverse=True)[:5]
+            print(f"\n  {colorize('最近 5 条记忆:', Colors.YELLOW)}")
+            for mem in recent:
+                ts = datetime.fromtimestamp(mem.created_at).strftime("%H:%M:%S")
+                imp_bar = colorize("*" * int(mem.importance), Colors.BRIGHT_YELLOW)
+                print(f"    [{ts}] {mem.description[:60]} {imp_bar}")
+        
+        print()
+
+    def print_stats(self) -> None:
+        """打印系统统计信息"""
         if not self.brain:
             print(colorize("系统未初始化", Colors.RED))
             return
         
-        status = f"""
-{colorize("系统状态", Colors.BRIGHT_CYAN + Colors.BOLD)}
-{colorize("-" * 40, Colors.DIM)}
-  运行状态: {colorize("运行中" if self.brain.is_running else "已停止", Colors.GREEN if self.brain.is_running else Colors.RED)}
-  ROS2模式: {colorize("模拟" if self.mock_ros2 else "真实", Colors.YELLOW if self.mock_ros2 else Colors.GREEN)}
-  详细模式: {colorize("开启" if self.verbose else "关闭", Colors.GREEN if self.verbose else Colors.DIM)}
-"""
+        print(f"\n{colorize('系统统计', Colors.BRIGHT_CYAN + Colors.BOLD)}")
+        print(colorize("-" * 40, Colors.DIM))
+        
+        # 基础状态
+        mode = "LLM" if self.brain.llm_available else "规则"
+        print(f"  运行状态: {colorize('运行中' if self.brain.is_running else '已停止', Colors.GREEN if self.brain.is_running else Colors.RED)}")
+        print(f"  处理模式: {colorize(mode, Colors.GREEN if mode == 'LLM' else Colors.YELLOW)}")
+        print(f"  ROS2模式: {colorize('模拟' if self.mock_ros2 else '真实', Colors.YELLOW if self.mock_ros2 else Colors.GREEN)}")
+        
+        # LLM 信息
+        if self.brain.llm_available and self.brain.llm:
+            print(f"  LLM 模型: {colorize(self.brain.llm.model, Colors.BRIGHT_CYAN)}")
+        
+        # AgentLoop 统计
+        if self.brain.agent_loop:
+            loop_stats = self.brain.agent_loop.get_stats()
+            print(f"\n  {colorize('AgentLoop:', Colors.YELLOW)}")
+            print(f"    总运行次数: {loop_stats['total_runs']}")
+            print(f"    成功次数:   {loop_stats['success_runs']}")
+            print(f"    总 tokens:  {loop_stats['total_tokens']}")
+        
+        # Memory 统计
+        if self.brain.memory_stream:
+            mem_stats = self.brain.memory_stream.get_stats()
+            print(f"\n  {colorize('Memory:', Colors.YELLOW)}")
+            print(f"    记忆总数: {mem_stats['total_memories']}")
+            print(f"    检索次数: {mem_stats['total_retrieved']}")
         
         # 行为执行器统计
         if self.brain.behavior_executor:
-            stats = self.brain.behavior_executor.get_stats_dict()
-            status += f"""
-{colorize("行为执行器统计:", Colors.YELLOW)}
-  总执行次数: {stats.get('total_executions', 0)}
-  成功次数:   {stats.get('successful_executions', 0)}
-  失败次数:   {stats.get('failed_executions', 0)}
-  成功率:     {stats.get('success_rate', 0):.1%}
-  平均耗时:   {stats.get('average_duration_ms', 0):.1f}ms
-"""
+            try:
+                be_stats = self.brain.behavior_executor.get_stats_dict()
+                print(f"\n  {colorize('BehaviorExecutor:', Colors.YELLOW)}")
+                print(f"    总执行: {be_stats.get('total_executions', 0)}")
+                print(f"    成功率: {be_stats.get('success_rate', 0):.1%}")
+            except Exception:
+                pass
         
-        print(status)
+        print()
+    
+    def print_status(self) -> None:
+        """打印简要状态"""
+        self.print_stats()
     
     def display_result(self, result: ProcessResult) -> None:
-        """
-        显示处理结果
-        
-        Args:
-            result: 处理结果
-        """
+        """显示处理结果"""
         print()
         
-        # 详细模式：显示trace_id和执行时间
+        # 详细模式：显示trace_id、执行时间、模式
         if self.verbose:
-            print(colorize(f"[Trace: {result.trace_id}]", Colors.DIM))
-            print(colorize(f"[耗时: {result.execution_time_ms:.1f}ms]", Colors.DIM))
-            if result.behavior_result:
-                print(colorize(
-                    f"[行为: {result.behavior_result.behavior_name}]",
-                    Colors.DIM
-                ))
+            print(colorize(
+                f"[Trace: {result.trace_id}] "
+                f"[模式: {result.mode}] "
+                f"[耗时: {result.execution_time_ms:.1f}ms]",
+                Colors.DIM,
+            ))
+            if result.metadata:
+                if "tokens_used" in result.metadata:
+                    print(colorize(f"[Tokens: {result.metadata['tokens_used']}]", Colors.DIM))
             print()
         
-        # 显示错误（如果有）
+        # 显示错误
         if not result.success:
-            print(colorize(f"✗ 错误: {result.error}", Colors.RED))
+            print(colorize(f"  错误: {result.error}", Colors.RED))
             return
         
         # 显示chat响应
         if result.chat_response:
-            print(colorize("🤖 OpenRoboBrain:", Colors.BRIGHT_GREEN + Colors.BOLD))
+            print(colorize("  OpenRoboBrain:", Colors.BRIGHT_GREEN + Colors.BOLD))
             print(f"   {result.chat_response}")
             print()
         
         # 显示ROS2命令
         if result.ros2_commands:
-            print(colorize("📡 ROS2 控制命令:", Colors.BRIGHT_YELLOW + Colors.BOLD))
+            print(colorize("  ROS2 控制命令:", Colors.BRIGHT_YELLOW + Colors.BOLD))
             for i, cmd in enumerate(result.ros2_commands, 1):
-                cmd_type = cmd.get("command_type", "unknown")
-                params = cmd.get("parameters", {})
+                if hasattr(cmd, 'command_type'):
+                    cmd_type = cmd.command_type
+                    params = cmd.parameters if hasattr(cmd, 'parameters') else {}
+                elif isinstance(cmd, dict):
+                    cmd_type = cmd.get("command_type", "unknown")
+                    params = cmd.get("parameters", {})
+                else:
+                    cmd_type = str(cmd)
+                    params = {}
                 
-                # 格式化命令显示
                 print(colorize(f"   [{i}] ", Colors.YELLOW) + 
                       colorize(cmd_type, Colors.BRIGHT_CYAN))
                 
                 if params:
-                    for key, value in params.items():
-                        print(colorize(f"       └─ {key}: ", Colors.DIM) + 
+                    for key, value in (params.items() if isinstance(params, dict) else []):
+                        print(colorize(f"       {key}: ", Colors.DIM) + 
                               colorize(str(value), Colors.WHITE))
-            print()
-        elif self.verbose:
-            print(colorize("   (无ROS2命令)", Colors.DIM))
-            print()
-        
-        # 详细模式：显示更多行为结果细节
-        if self.verbose and result.behavior_result:
-            br = result.behavior_result
-            if br.data:
-                # 显示额外数据
-                if "intent" in br.data:
-                    print(colorize(f"[意图: {br.data['intent']}]", Colors.DIM))
-                if "reasoning_steps" in br.data:
-                    steps = br.data["reasoning_steps"]
-                    if steps:
-                        print(colorize("[推理步骤]:", Colors.DIM))
-                        for step in steps:
-                            print(colorize(f"  - {step}", Colors.DIM))
-                if "confidence" in br.data:
-                    print(colorize(f"[置信度: {br.data['confidence']:.2f}]", Colors.DIM))
             print()
     
     async def process_input(self, user_input: str) -> bool:
-        """
-        处理用户输入
-        
-        Args:
-            user_input: 用户输入
-            
-        Returns:
-            是否继续运行
-        """
+        """处理用户输入，返回是否继续运行"""
         user_input = user_input.strip()
         
         if not user_input:
@@ -254,7 +285,7 @@ class ORBCLI:
         
         # 处理命令
         if user_input.startswith("/"):
-            cmd = user_input.lower()
+            cmd = user_input.lower().split()[0]
             
             if cmd in ("/quit", "/exit", "/q"):
                 return False
@@ -273,8 +304,16 @@ class ORBCLI:
                 self.print_status()
                 return True
             
+            elif cmd in ("/memory", "/mem", "/m"):
+                self.print_memory()
+                return True
+            
+            elif cmd in ("/stats",):
+                self.print_stats()
+                return True
+            
             elif cmd in ("/clear", "/cls"):
-                print("\033[2J\033[H")  # 清屏
+                print("\033[2J\033[H")
                 self.print_banner()
                 return True
             
@@ -289,16 +328,9 @@ class ORBCLI:
             return True
         
         try:
-            # 显示处理中提示
             print(colorize("处理中...", Colors.DIM), end="\r")
-            
-            # 调用OpenRoboBrain处理
             result = await self.brain.process(user_input)
-            
-            # 清除"处理中"提示
             print(" " * 20, end="\r")
-            
-            # 显示结果
             self.display_result(result)
             
         except KeyboardInterrupt:
@@ -313,7 +345,6 @@ class ORBCLI:
     
     async def run(self) -> None:
         """运行REPL循环"""
-        # 初始化
         if not await self.initialize():
             return
         
@@ -323,15 +354,10 @@ class ORBCLI:
         try:
             while self._running:
                 try:
-                    # 显示提示符
                     prompt = colorize("> ", Colors.BRIGHT_GREEN + Colors.BOLD)
-                    
-                    # 读取输入（同步读取，但在事件循环中运行）
                     user_input = await asyncio.get_event_loop().run_in_executor(
                         None, lambda: input(prompt)
                     )
-                    
-                    # 处理输入
                     self._running = await self.process_input(user_input)
                     
                 except KeyboardInterrupt:
@@ -342,7 +368,6 @@ class ORBCLI:
                         print()
                         break
                 except EOFError:
-                    # 处理EOF（如管道输入结束）
                     break
                     
         finally:
@@ -350,20 +375,10 @@ class ORBCLI:
 
 
 async def main_async(args: argparse.Namespace) -> int:
-    """
-    异步主函数
-    
-    Args:
-        args: 命令行参数
-        
-    Returns:
-        退出码
-    """
-    # 设置日志
+    """异步主函数"""
     log_level = "DEBUG" if args.verbose else "INFO"
     setup_logging(level=log_level, use_enhanced_format=args.verbose)
     
-    # 创建并运行CLI
     cli = ORBCLI(
         verbose=args.verbose,
         mock_ros2=not args.real_ros2,
@@ -381,15 +396,9 @@ async def main_async(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    """
-    主函数
-    
-    Returns:
-        退出码
-    """
-    # 解析命令行参数
+    """主函数"""
     parser = argparse.ArgumentParser(
-        description="OpenRoboBrain - 机器人智能大脑系统 CLI",
+        description="OpenRoboBrain (ORB) - 机器人智能大脑系统 CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
@@ -397,37 +406,18 @@ def main() -> int:
   %(prog)s -v                 # 启动CLI，详细模式
   %(prog)s --real-ros2        # 启动CLI，连接真实ROS2
   %(prog)s -e "帮我倒杯水"     # 执行单条命令
-
-更多信息请访问: https://github.com/your-repo/OpenRoboBrain
         """,
     )
     
-    parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="显示详细信息（trace_id、执行时间等）",
-    )
-    
-    parser.add_argument(
-        "--real-ros2",
-        action="store_true",
-        help="连接真实ROS2（默认使用模拟模式）",
-    )
-    
-    parser.add_argument(
-        "-e", "--execute",
-        type=str,
-        metavar="COMMAND",
-        help="执行单条命令后退出",
-    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="显示详细信息")
+    parser.add_argument("--real-ros2", action="store_true", help="连接真实ROS2")
+    parser.add_argument("-e", "--execute", type=str, metavar="COMMAND", help="执行单条命令后退出")
     
     args = parser.parse_args()
     
-    # 如果指定了单条命令
     if args.execute:
         return asyncio.run(execute_single(args))
     
-    # 运行REPL
     try:
         return asyncio.run(main_async(args))
     except KeyboardInterrupt:
@@ -436,45 +426,24 @@ def main() -> int:
 
 
 async def execute_single(args: argparse.Namespace) -> int:
-    """
-    执行单条命令
-    
-    Args:
-        args: 命令行参数
-        
-    Returns:
-        退出码
-    """
-    # 设置日志
+    """执行单条命令"""
     log_level = "DEBUG" if args.verbose else "WARNING"
     setup_logging(level=log_level, use_enhanced_format=args.verbose)
     
-    cli = ORBCLI(
-        verbose=args.verbose,
-        mock_ros2=not args.real_ros2,
-    )
+    cli = ORBCLI(verbose=args.verbose, mock_ros2=not args.real_ros2)
     
     try:
-        # 初始化
         if not await cli.initialize():
             return 1
         
-        # 执行命令
         result = await cli.brain.process(args.execute)
-        
-        # 显示结果
         cli.display_result(result)
-        
-        # 关闭
         await cli.shutdown()
         
         return 0 if result.success else 1
         
     except Exception as e:
         print(colorize(f"执行错误: {e}", Colors.RED))
-        if args.verbose:
-            import traceback
-            traceback.print_exc()
         return 1
 
 
