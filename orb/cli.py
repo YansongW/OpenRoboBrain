@@ -354,11 +354,26 @@ class ORBCLI:
                 else:
                     # 开启语音（首次需初始化）
                     ok = await self._init_voice()
-                    if ok:
+                    if ok and self._asr is not None:
                         self.voice = True
                         print(colorize("语音模式已开启！对着麦克风说话即可输入", Colors.GREEN))
+                    elif ok and self._asr is None:
+                        print(colorize("未检测到麦克风，无法开启语音输入", Colors.RED))
+                        print(colorize("TTS 已就绪，回复仍会语音播放 (输入 /tts 测试)", Colors.DIM))
                     else:
-                        print(colorize("语音模式启用失败", Colors.RED))
+                        print(colorize("语音模块加载失败", Colors.RED))
+                return True
+            
+            elif cmd.startswith("/tts"):
+                # 快速测试 TTS
+                if self._tts is None:
+                    await self._init_voice()
+                if self._tts:
+                    test_text = user_input[4:].strip() or "你好，我是OpenRoboBrain，语音合成测试成功。"
+                    print(colorize(f"  播放: {test_text}", Colors.DIM))
+                    await self._tts.speak(test_text)
+                else:
+                    print(colorize("TTS 未初始化", Colors.RED))
                 return True
             
             elif cmd in ("/status", "/s"):
