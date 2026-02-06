@@ -153,3 +153,6 @@ checkpoints/
 .env.*.local
 secrets/
 credentials/
+
+# External repos (cloned for simulation)
+unitree_rl_gym/

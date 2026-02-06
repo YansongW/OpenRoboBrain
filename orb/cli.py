@@ -57,17 +57,22 @@ class ORBCLI:
     - /memory 查看记忆状态
     - /stats 显示系统统计
     - 支持verbose详细模式
+    - 支持 --voice 语音对话模式 (ASR + TTS)
     """
     
     def __init__(
         self,
         verbose: bool = False,
         mock_ros2: bool = True,
+        voice: bool = False,
     ):
         self.verbose = verbose
         self.mock_ros2 = mock_ros2
+        self.voice = voice
         self.brain: Optional[OpenRoboBrain] = None
         self._running = False
+        self._asr = None
+        self._tts = None
     
     async def initialize(self) -> bool:
         """初始化OpenRoboBrain"""
@@ -80,10 +85,48 @@ class ORBCLI:
             
             mode = "LLM" if self.brain.llm_available else "规则"
             print(colorize(f"  OpenRoboBrain 初始化完成 (模式: {mode})", Colors.GREEN))
+            
             return True
             
         except Exception as e:
             print(colorize(f"  初始化失败: {e}", Colors.RED))
+            return False
+
+    async def _init_voice(self) -> bool:
+        """
+        初始化 ASR + TTS 语音模块 (延迟加载，首次 /voice 时调用)
+        
+        Returns:
+            是否初始化成功
+        """
+        if self._asr is not None or self._tts is not None:
+            return True  # 已经初始化过
+        
+        try:
+            from orb.agent.atomic.audio.asr import ASREngine
+            from orb.agent.atomic.audio.tts import TTSEngine
+            
+            print(colorize("正在加载语音模块 (首次需下载 Whisper 模型)...", Colors.CYAN))
+            
+            # ASR
+            self._asr = ASREngine(model_size="small", language="zh")
+            if not self._asr.is_available():
+                print(colorize("  警告: 未检测到麦克风，语音输入不可用", Colors.YELLOW))
+                self._asr = None
+            else:
+                print(colorize("  ASR (Whisper small) 就绪", Colors.GREEN))
+            
+            # TTS
+            self._tts = TTSEngine(voice="zh-CN-XiaoxiaoNeural")
+            print(colorize("  TTS (edge-tts) 就绪", Colors.GREEN))
+            return True
+            
+        except ImportError as e:
+            print(colorize(f"语音模块依赖缺失: {e}", Colors.RED))
+            print(colorize("安装: pip install faster-whisper sounddevice edge-tts", Colors.DIM))
+            return False
+        except Exception as e:
+            print(colorize(f"语音模块初始化失败: {e}", Colors.RED))
             return False
     
     async def shutdown(self) -> None:
@@ -102,11 +145,13 @@ class ORBCLI:
 {colorize("=" * 60, Colors.CYAN)}
 
   处理模式: {colorize(mode, Colors.GREEN if mode == "LLM" else Colors.YELLOW)}
+  语音模式: {colorize("开启 (说话即输入)", Colors.GREEN) if self.voice else colorize("关闭", Colors.DIM)}
   
   命令:
     {colorize("/help", Colors.YELLOW)}     - 显示帮助
     {colorize("/memory", Colors.YELLOW)}   - 查看记忆状态
     {colorize("/stats", Colors.YELLOW)}    - 系统统计信息
+    {colorize("/voice", Colors.YELLOW)}    - 切换语音对话模式 (当前: {colorize("开" if self.voice else "关", Colors.GREEN if self.voice else Colors.DIM)})
     {colorize("/verbose", Colors.YELLOW)}  - 切换详细模式 (当前: {colorize("开" if self.verbose else "关", Colors.GREEN if self.verbose else Colors.RED)})
     {colorize("/quit", Colors.YELLOW)}     - 退出程序
 
@@ -122,6 +167,7 @@ class ORBCLI:
 
 {colorize("命令:", Colors.YELLOW)}
   /help      显示此帮助信息
+  /voice     切换语音对话模式 (ASR + TTS)
   /memory    查看记忆系统状态和最近记忆
   /stats     显示系统统计（AgentLoop、Memory、Compaction）
   /status    显示运行状态
@@ -300,6 +346,36 @@ class ORBCLI:
                 print(f"详细模式已{mode}")
                 return True
             
+            elif cmd in ("/voice",):
+                if self.voice:
+                    # 关闭语音
+                    self.voice = False
+                    print(colorize("语音模式已关闭，切换回文字输入", Colors.YELLOW))
+                else:
+                    # 开启语音（首次需初始化）
+                    ok = await self._init_voice()
+                    if ok and self._asr is not None:
+                        self.voice = True
+                        print(colorize("语音模式已开启！对着麦克风说话即可输入", Colors.GREEN))
+                    elif ok and self._asr is None:
+                        print(colorize("未检测到麦克风，无法开启语音输入", Colors.RED))
+                        print(colorize("TTS 已就绪，回复仍会语音播放 (输入 /tts 测试)", Colors.DIM))
+                    else:
+                        print(colorize("语音模块加载失败", Colors.RED))
+                return True
+            
+            elif cmd.startswith("/tts"):
+                # 快速测试 TTS
+                if self._tts is None:
+                    await self._init_voice()
+                if self._tts:
+                    test_text = user_input[4:].strip() or "你好，我是OpenRoboBrain，语音合成测试成功。"
+                    print(colorize(f"  播放: {test_text}", Colors.DIM))
+                    await self._tts.speak(test_text)
+                else:
+                    print(colorize("TTS 未初始化", Colors.RED))
+                return True
+            
             elif cmd in ("/status", "/s"):
                 self.print_status()
                 return True
@@ -333,6 +409,10 @@ class ORBCLI:
             print(" " * 20, end="\r")
             self.display_result(result)
             
+            # 语音模式：播放回复
+            if self.voice and self._tts and result.success and result.chat_response:
+                await self._tts.speak(result.chat_response)
+            
         except KeyboardInterrupt:
             print(colorize("\n已取消", Colors.YELLOW))
         except Exception as e:
@@ -354,10 +434,9 @@ class ORBCLI:
         try:
             while self._running:
                 try:
-                    prompt = colorize("> ", Colors.BRIGHT_GREEN + Colors.BOLD)
-                    user_input = await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: input(prompt)
-                    )
+                    user_input = await self._get_input()
+                    if user_input is None:
+                        continue
                     self._running = await self.process_input(user_input)
                     
                 except KeyboardInterrupt:
@@ -373,6 +452,34 @@ class ORBCLI:
         finally:
             await self.shutdown()
 
+    async def _get_input(self) -> Optional[str]:
+        """
+        获取用户输入
+
+        语音模式: 监听麦克风 → Whisper 转文字
+        文字模式: 标准 input()
+        """
+        if self.voice and self._asr:
+            # 语音输入模式
+            text = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._asr.listen(
+                    prompt=colorize("🎤 ", Colors.BRIGHT_CYAN)
+                ),
+            )
+            if text:
+                # 显示识别结果
+                print(colorize(f"  [语音识别] ", Colors.DIM) + text)
+                return text
+            else:
+                return None
+        else:
+            # 文字输入模式
+            prompt = colorize("> ", Colors.BRIGHT_GREEN + Colors.BOLD)
+            return await asyncio.get_event_loop().run_in_executor(
+                None, lambda: input(prompt)
+            )
+
 
 async def main_async(args: argparse.Namespace) -> int:
     """异步主函数"""
@@ -382,6 +489,7 @@ async def main_async(args: argparse.Namespace) -> int:
     cli = ORBCLI(
         verbose=args.verbose,
         mock_ros2=not args.real_ros2,
+        voice=args.voice,
     )
     
     try:
@@ -410,6 +518,7 @@ def main() -> int:
     )
     
     parser.add_argument("-v", "--verbose", action="store_true", help="显示详细信息")
+    parser.add_argument("--voice", action="store_true", help="启用语音对话模式 (ASR + TTS)")
     parser.add_argument("--real-ros2", action="store_true", help="连接真实ROS2")
     parser.add_argument("-e", "--execute", type=str, metavar="COMMAND", help="执行单条命令后退出")
     
