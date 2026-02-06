@@ -1,48 +1,61 @@
-# KaiBrain 待办任务
+# OpenRoboBrain 待办任务
 
-## 立即处理 (本周)
+## 立即处理 (本周) -- 第二阶段核心功能
 
-### 开发任务
+### P0: Agent Loop 真实 LLM 集成
 
-- [x] **D-001** Agent运行时主循环完善 ✅
-  - 文件: `kaibrain/agent/runtime/agent_loop.py`
-  - 状态: 已完成完整实现（事件驱动、生命周期钩子、流式输出）
+- [x] **D-100** LLM 推理适配器 ✅
+  - 文件: `orb/agent/runtime/llm_inference.py`
+  - 状态: 已完成（流式/非流式、tool_calls 解析、token 统计、16个测试通过）
 
-- [x] **D-002** 工具执行器完善 ✅
-  - 文件: `kaibrain/agent/runtime/tool_executor.py`
-  - 状态: 已完成（工具注册、执行、超时控制、ToolPolicy集成）
+- [x] **D-101** Agent Loop ReAct 集成验证 ✅
+  - 状态: 已完成（推理→工具调用→再推理循环验证通过）
 
-- [x] **D-003** Shell工具安全实现 ✅
-  - 文件: `kaibrain/system/tools/builtin/shell.py`
-  - 状态: 已完成（白/黑名单、超时、后台执行、安全模式）
+### P0: Session Compaction
 
-- [x] **D-004** SQLite存储适配器 ✅
-  - 文件: `kaibrain/data/storage/relational.py`
-  - 状态: 已完成（连接池、CRUD、迁移）
+- [x] **D-102** Token 计数与会话压缩 ✅
+  - 文件: `orb/agent/infrastructure/session_compactor.py`
+  - 状态: 已完成（token 估算、LLM 摘要、session pruning、自动触发、19个测试通过）
+
+### P0: Memory 系统 (含类人记忆排序)
+
+- [x] **D-103** MemoryStream 基础层 ✅
+  - 文件: `orb/data/memory/memory_stream.py`
+  - 状态: 已完成（MemoryObject + MemoryStream + Markdown/JSON 持久化 + 间隔重复）
+
+- [x] **D-104** MemoryRanker 类人记忆排序 ✅
+  - 文件: `orb/data/memory/memory_ranker.py`
+  - 状态: 已完成（5信号评分 + 遗忘曲线 + 扩散激活 + 可解释性输出、33个测试通过）
+
+- [ ] **D-105** Memory 工具集成
+  - 任务: memory_write/memory_search/memory_get 工具注册到 ToolExecutor
+  - 优先级: P1
 
 ### 测试任务
 
+- [x] **T-009** LLM 推理适配器测试 ✅
+  - 状态: 已完成（16个测试通过）
+
+- [x] **T-010** MemoryRanker 单元测试 ✅
+  - 状态: 已完成（33个测试通过）
+
+- [x] **T-011** Session Compactor 测试 ✅
+  - 状态: 已完成（19个测试通过）
+
+- [x] **T-012** Phase 2 集成测试 ✅
+  - 状态: 已完成（9个集成测试通过）
+
+### 已完成 (第一阶段)
+
+- [x] **D-001** Agent运行时主循环完善 ✅
+- [x] **D-002** 工具执行器完善 ✅
+- [x] **D-003** Shell工具安全实现 ✅
+- [x] **D-004** SQLite存储适配器 ✅
 - [x] **T-001** 创建测试目录结构 ✅
-  - 目录: `tests/unit/`, `tests/integration/`
-  - 状态: 已完成（pytest配置、fixtures）
-
-- [ ] **T-002** LLM Provider测试
-  - 任务: 测试OpenAI/Ollama调用
-  - 优先级: P1
-
-- [ ] **T-005** MVP端到端测试
-  - 任务: 测试CLI输入→chat响应+ROS2命令
-  - 优先级: P0
-
-### 文档任务
-
-- [ ] **DOC-001** 补全模块文档字符串
-  - 范围: 所有`pass`方法
-  - 优先级: P1
-
-- [ ] **DOC-002** CLI使用文档
-  - 任务: 编写CLI使用指南和示例
-  - 优先级: P1
+- [x] **T-005** MVP端到端测试 ✅ (规则模式)
+- [x] **T-006** MessageBus单元测试 ✅
+- [x] **T-007** ToolPolicy单元测试 ✅
+- [x] **T-008** SubAgent终止测试 ✅
 
 ---
 
@@ -51,28 +64,28 @@
 ### 开发任务
 
 - [ ] **D-005** 工作流记忆持久化
-  - 文件: `kaibrain/data/explicit/workflow_memory.py`
+  - 文件: `orb/data/explicit/workflow_memory.py`
   - 任务: 集成SQLite存储
   - 依赖: D-004 ✅
 
 - [x] **D-006** HTTP工具完善 ✅
-  - 文件: `kaibrain/system/tools/builtin/http.py`
+  - 文件: `orb/system/tools/builtin/http.py`
   - 状态: 已完成（GET/POST、httpx/aiohttp双支持、文件下载）
 
 - [x] **D-007** 子Agent生成器 ✅
-  - 文件: `kaibrain/agent/subagent/spawn.py`
+  - 文件: `orb/agent/subagent/spawn.py`
   - 状态: 已完成（动态Agent创建、任务追踪、取消机制）
 
-- [ ] **D-008** 任务拆解器LLM集成
-  - 文件: `kaibrain/agent/orchestrator/task_decomposer.py`
-  - 任务: 使用LLM自动拆解复杂任务
+- [x] **D-008** 任务拆解器LLM集成 ✅
+  - 文件: `orb/agent/orchestrator/task_decomposer.py`
+  - 状态: 已完成（LLM分解 + 规则分解fallback + 机器人场景模板）
 
 - [x] **D-009** 行为层框架实现 ✅
-  - 目录: `kaibrain/behavior/`
+  - 目录: `orb/behavior/`
   - 状态: 已完成（基类、注册表、执行器、内置行为、GeneralBehavior）
 
 - [ ] **D-015** LLM配置优化
-  - 文件: `kaibrain/system/llm/config.py`
+  - 文件: `orb/system/llm/config.py`
   - 任务: 支持更多Provider配置、流式输出优化
   - 优先级: P1
 
@@ -109,27 +122,28 @@
 ### 开发任务
 
 - [ ] **D-010** 技能基类完善
-  - 文件: `kaibrain/skills/base.py`
+  - 文件: `orb/skills/base.py`
   - 任务: 实现技能生命周期回调
 
 - [ ] **D-011** 文件管理技能
-  - 目录: `kaibrain/skills/file_management/`
+  - 目录: `orb/skills/file_management/`
   - 任务: 文件搜索、整理、备份
 
 - [ ] **D-012** 代码分析技能
-  - 目录: `kaibrain/skills/code_analysis/`
+  - 目录: `orb/skills/code_analysis/`
   - 任务: 代码阅读、分析、生成
 
-- [ ] **D-013** ChromaDB向量存储
-  - 文件: `kaibrain/data/storage/vector.py`
-  - 任务: 向量存储、相似度搜索
+- [ ] **D-013** 向量存储 (SQLite + Embeddings)
+  - 文件: `orb/data/storage/vector.py`
+  - 任务: 基于 SQLite 的向量存储（不再依赖 ChromaDB）
+  - 依赖: D-103 MemoryStream
 
 - [ ] **D-014** 实体记忆向量化
-  - 文件: `kaibrain/data/explicit/entity_memory.py`
-  - 任务: 集成向量存储
+  - 文件: `orb/data/explicit/entity_memory.py`
+  - 任务: 集成 MemoryRanker 进行实体记忆检索
 
 - [x] **D-017** 工具权限系统 ✅
-  - 文件: `kaibrain/agent/security/tool_policy.py`
+  - 文件: `orb/agent/security/tool_policy.py`
   - 状态: 已完成（ToolPolicy枚举、ToolExecutor集成）
 
 - [ ] **D-018** API接口层
@@ -143,7 +157,7 @@
 ### 产品任务
 
 - [x] **P-001** CLI交互界面 ✅
-  - 文件: `kaibrain/cli.py`
+  - 文件: `orb/cli.py`
   - 状态: 已完成（REPL、彩色输出、verbose模式、单命令执行）
 
 - [ ] **P-002** 配置校验
@@ -162,7 +176,7 @@
 - [ ] **D-020** ROS2节点实现
 - [ ] **D-021** 话题发布订阅
 - [x] **D-022** 大脑-小脑桥接 ✅
-  - 文件: `kaibrain/system/brain_pipeline/brain_cerebellum_bridge.py`
+  - 文件: `orb/system/brain_pipeline/brain_cerebellum_bridge.py`
   - 状态: 已完成（命令转换、mock模式、状态反馈）
 
 ### 硬件集成
@@ -224,7 +238,7 @@
 - [x] BehaviorContext（trace_id、ros2_commands、chat_response）
 
 ### MVP调用链路
-- [x] KaiBrain.process()入口方法
+- [x] OpenRoboBrain.process()入口方法
 - [x] ProcessResult数据类（chat_response + ros2_commands）
 - [x] CLI交互界面（REPL、彩色输出、verbose模式）
 - [x] 增强日志系统（trace_id、层级标识、trace_context）
@@ -277,16 +291,16 @@
 
 ```bash
 # 启动CLI（模拟ROS2模式）
-python -m kaibrain.cli
+python -m orb.cli
 
 # 详细模式（显示trace_id、执行时间）
-python -m kaibrain.cli -v
+python -m orb.cli -v
 
 # 执行单条命令
-python -m kaibrain.cli -e "帮我倒杯水"
+python -m orb.cli -e "帮我倒杯水"
 
 # 连接真实ROS2
-python -m kaibrain.cli --real-ros2
+python -m orb.cli --real-ros2
 ```
 
 ### CLI命令
@@ -301,9 +315,9 @@ python -m kaibrain.cli --real-ros2
 ### 代码调用
 
 ```python
-from kaibrain import KaiBrain
+from orb import OpenRoboBrain
 
-brain = KaiBrain(mock_ros2=True)
+brain = OpenRoboBrain(mock_ros2=True)
 await brain.initialize()
 await brain.start()
 

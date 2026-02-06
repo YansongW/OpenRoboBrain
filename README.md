@@ -1,4 +1,4 @@
-# KaiBrain - 机器人大脑系统
+# OpenRoboBrain - 机器人大脑系统
 
 内部研发项目 | 当前版本: 0.1.0-alpha | **状态: 框架阶段**
 
@@ -18,7 +18,7 @@
 
 ### 核心设计：大脑-小脑完全解耦
 
-KaiBrain 采用**大小脑双管道架构**，两者完全解耦，通过 Bridge（桥接器）作为唯一交互点进行状态同步。
+OpenRoboBrain 采用**大小脑双管道架构**，两者完全解耦，通过 Bridge（桥接器）作为唯一交互点进行状态同步。
 
 | 维度 | 大脑 (Brain) | 小脑 (Cerebellum) |
 |------|-------------|------------------|
@@ -135,7 +135,7 @@ flowchart TB
 ## 目录结构
 
 ```
-kaibrain/
+orb/
 ├── core.py                 # 系统入口 ✅
 ├── agent/                  # Agent层
 │   ├── base.py             # Agent基类(含LLM/工具集成) ✅
@@ -209,10 +209,10 @@ pip install -e .
 # 运行（当前仅能启动框架）
 python -c "
 import asyncio
-from kaibrain import KaiBrain
+from orb import OpenRoboBrain
 
 async def main():
-    brain = KaiBrain()
+    brain = OpenRoboBrain()
     await brain.initialize()
     await brain.start()
     # 系统启动但无实际功能

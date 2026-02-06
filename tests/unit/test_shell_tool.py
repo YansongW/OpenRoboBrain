@@ -1,4 +1,4 @@
-"""
+﻿"""
 Shell 工具单元测试
 """
 
@@ -6,7 +6,7 @@ import asyncio
 import sys
 import pytest
 
-from kaibrain.system.tools.builtin.shell import (
+from orb.system.tools.builtin.shell import (
     ShellExecutor,
     ShellSecurityConfig,
     SecurityMode,

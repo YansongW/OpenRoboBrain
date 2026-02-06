@@ -1,4 +1,4 @@
-"""
+﻿"""
 工具策略强制执行测试
 
 测试框架修复：
@@ -9,13 +9,13 @@
 import asyncio
 import pytest
 
-from kaibrain.agent.runtime.tool_executor import (
+from orb.agent.runtime.tool_executor import (
     ToolExecutor,
     ToolRegistry,
     ToolCall,
     ToolResultStatus,
 )
-from kaibrain.agent.security.tool_policy import (
+from orb.agent.security.tool_policy import (
     ToolPolicy,
     ToolPolicyConfig,
     PolicyDecision,

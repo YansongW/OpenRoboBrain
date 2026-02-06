@@ -7,10 +7,10 @@
 # =====================
 defaults:
   # 工作空间根目录
-  workspace: "~/kaibrain"
+  workspace: "~/orb"
   
   # 状态目录
-  state_dir: "~/.kaibrain"
+  state_dir: "~/.orb"
   
   # 沙箱配置
   sandbox:
@@ -49,12 +49,12 @@ defaults:
 agents:
   # 主 Agent（默认）
   - id: "main"
-    name: "KaiBrain Main"
+    name: "OpenRoboBrain Main"
     default: true
     enabled: true
     
     # 工作空间（继承默认值）
-    workspace: "~/kaibrain"
+    workspace: "~/orb"
     
     # 沙箱配置
     sandbox:
@@ -76,7 +76,7 @@ agents:
     name: "Vision Agent"
     enabled: true
     
-    workspace: "~/kaibrain-vision"
+    workspace: "~/orb-vision"
     
     sandbox:
       mode: "non-main"
@@ -95,7 +95,7 @@ agents:
     name: "Action Agent"
     enabled: true
     
-    workspace: "~/kaibrain-action"
+    workspace: "~/orb-action"
     
     sandbox:
       mode: "all"
@@ -114,7 +114,7 @@ agents:
     name: "Planner Agent"
     enabled: true
     
-    workspace: "~/kaibrain-planner"
+    workspace: "~/orb-planner"
     
     tools:
       allow: ["read", "memory_*", "planning_*"]
@@ -240,8 +240,8 @@ super_agent:
   auto_start: true
   
   # 新增：工作空间基础目录
-  workspace_base: "~/kaibrain"
-  state_dir: "~/.kaibrain"
+  workspace_base: "~/orb"
+  state_dir: "~/.orb"
   
   # 新增：启用多 Agent 路由
   enable_routing: true

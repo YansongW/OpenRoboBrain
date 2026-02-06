@@ -1,8 +1,8 @@
 """
 MVP 端到端测试
 
-测试KaiBrain的完整调用链路:
-CLI/API输入 -> KaiBrain.process() -> BehaviorExecutor -> GeneralBehavior 
+测试OpenRoboBrain的完整调用链路:
+CLI/API输入 -> OpenRoboBrain.process() -> BehaviorExecutor -> GeneralBehavior 
 -> ReasoningAgent/RuleBased -> ProcessResult(chat_response + ros2_commands)
 """
 
@@ -11,8 +11,8 @@ import pytest
 import pytest_asyncio
 from typing import Optional
 
-from kaibrain import KaiBrain, ProcessResult
-from kaibrain.behavior.base import BehaviorStatus
+from orb import OpenRoboBrain, ProcessResult
+from orb.behavior.base import BehaviorStatus
 
 
 class TestMVPCallChain:
@@ -20,23 +20,23 @@ class TestMVPCallChain:
     
     @pytest_asyncio.fixture
     async def brain(self):
-        """创建并初始化KaiBrain实例"""
-        brain = KaiBrain(mock_ros2=True)
+        """创建并初始化OpenRoboBrain实例"""
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         await brain.start()
         yield brain
         await brain.stop()
     
     @pytest.mark.asyncio
-    async def test_brain_initialization(self, brain: KaiBrain):
-        """测试KaiBrain初始化"""
+    async def test_brain_initialization(self, brain: OpenRoboBrain):
+        """测试OpenRoboBrain初始化"""
         assert brain is not None
         assert brain.is_running is True
         assert brain.behavior_executor is not None
         assert brain.bridge is not None
     
     @pytest.mark.asyncio
-    async def test_process_returns_result(self, brain: KaiBrain):
+    async def test_process_returns_result(self, brain: OpenRoboBrain):
         """测试process()方法返回ProcessResult"""
         result = await brain.process("你好")
         
@@ -46,7 +46,7 @@ class TestMVPCallChain:
         assert result.trace_id.startswith("trace-")
     
     @pytest.mark.asyncio
-    async def test_process_generates_chat_response(self, brain: KaiBrain):
+    async def test_process_generates_chat_response(self, brain: OpenRoboBrain):
         """测试process()生成chat_response"""
         result = await brain.process("你好")
         
@@ -55,7 +55,7 @@ class TestMVPCallChain:
         assert result.success is True
     
     @pytest.mark.asyncio
-    async def test_process_with_command_generates_ros2(self, brain: KaiBrain):
+    async def test_process_with_command_generates_ros2(self, brain: OpenRoboBrain):
         """测试指令类输入生成ROS2命令"""
         # 测试移动命令
         result = await brain.process("去厨房")
@@ -66,7 +66,7 @@ class TestMVPCallChain:
         assert isinstance(result.ros2_commands, list)
     
     @pytest.mark.asyncio
-    async def test_process_greeting(self, brain: KaiBrain):
+    async def test_process_greeting(self, brain: OpenRoboBrain):
         """测试问候语处理"""
         result = await brain.process("你好，你是谁？")
         
@@ -75,7 +75,7 @@ class TestMVPCallChain:
         # 问候语不应该生成ROS2命令
     
     @pytest.mark.asyncio
-    async def test_process_with_trace_id(self, brain: KaiBrain):
+    async def test_process_with_trace_id(self, brain: OpenRoboBrain):
         """测试自定义trace_id"""
         custom_trace_id = "test-trace-12345"
         result = await brain.process("测试", trace_id=custom_trace_id)
@@ -83,7 +83,7 @@ class TestMVPCallChain:
         assert result.trace_id == custom_trace_id
     
     @pytest.mark.asyncio
-    async def test_process_with_parameters(self, brain: KaiBrain):
+    async def test_process_with_parameters(self, brain: OpenRoboBrain):
         """测试带参数的process调用"""
         params = {"context": "test_context", "priority": "high"}
         result = await brain.process("测试任务", parameters=params)
@@ -92,14 +92,14 @@ class TestMVPCallChain:
         assert result.trace_id is not None
     
     @pytest.mark.asyncio
-    async def test_execution_time_recorded(self, brain: KaiBrain):
+    async def test_execution_time_recorded(self, brain: OpenRoboBrain):
         """测试执行时间记录"""
         result = await brain.process("测试")
         
         assert result.execution_time_ms >= 0
     
     @pytest.mark.asyncio
-    async def test_behavior_result_included(self, brain: KaiBrain):
+    async def test_behavior_result_included(self, brain: OpenRoboBrain):
         """测试BehaviorResult包含在结果中"""
         result = await brain.process("测试")
         
@@ -113,15 +113,15 @@ class TestRuleBasedMode:
     
     @pytest_asyncio.fixture
     async def brain(self):
-        """创建KaiBrain实例（无LLM配置）"""
-        brain = KaiBrain(mock_ros2=True)
+        """创建OpenRoboBrain实例（无LLM配置）"""
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         await brain.start()
         yield brain
         await brain.stop()
     
     @pytest.mark.asyncio
-    async def test_greeting_response(self, brain: KaiBrain):
+    async def test_greeting_response(self, brain: OpenRoboBrain):
         """测试问候响应"""
         greetings = ["你好", "hi", "hello", "嗨"]
         
@@ -132,7 +132,7 @@ class TestRuleBasedMode:
             assert len(result.chat_response) > 0
     
     @pytest.mark.asyncio
-    async def test_farewell_response(self, brain: KaiBrain):
+    async def test_farewell_response(self, brain: OpenRoboBrain):
         """测试告别响应"""
         farewells = ["再见", "拜拜", "bye"]
         
@@ -142,7 +142,7 @@ class TestRuleBasedMode:
             assert result.chat_response is not None
     
     @pytest.mark.asyncio
-    async def test_navigation_command(self, brain: KaiBrain):
+    async def test_navigation_command(self, brain: OpenRoboBrain):
         """测试导航命令"""
         commands = ["去客厅", "到厨房", "走到门口"]
         
@@ -154,7 +154,7 @@ class TestRuleBasedMode:
                 assert len(result.ros2_commands) > 0
     
     @pytest.mark.asyncio
-    async def test_grasp_command(self, brain: KaiBrain):
+    async def test_grasp_command(self, brain: OpenRoboBrain):
         """测试抓取命令"""
         commands = ["拿杯子", "取苹果", "给我书"]
         
@@ -163,7 +163,7 @@ class TestRuleBasedMode:
             assert result.success is True
     
     @pytest.mark.asyncio
-    async def test_stop_command(self, brain: KaiBrain):
+    async def test_stop_command(self, brain: OpenRoboBrain):
         """测试停止命令"""
         commands = ["停", "别动", "stop"]
         
@@ -172,7 +172,7 @@ class TestRuleBasedMode:
             assert result.success is True
     
     @pytest.mark.asyncio
-    async def test_unknown_input(self, brain: KaiBrain):
+    async def test_unknown_input(self, brain: OpenRoboBrain):
         """测试未知输入"""
         result = await brain.process("一些随机的文字内容")
         
@@ -185,15 +185,15 @@ class TestProcessResultFormat:
     
     @pytest_asyncio.fixture
     async def brain(self):
-        """创建KaiBrain实例"""
-        brain = KaiBrain(mock_ros2=True)
+        """创建OpenRoboBrain实例"""
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         await brain.start()
         yield brain
         await brain.stop()
     
     @pytest.mark.asyncio
-    async def test_result_to_dict(self, brain: KaiBrain):
+    async def test_result_to_dict(self, brain: OpenRoboBrain):
         """测试ProcessResult转字典"""
         result = await brain.process("测试")
         result_dict = result.to_dict()
@@ -205,7 +205,7 @@ class TestProcessResultFormat:
         assert "execution_time_ms" in result_dict
     
     @pytest.mark.asyncio
-    async def test_ros2_commands_format(self, brain: KaiBrain):
+    async def test_ros2_commands_format(self, brain: OpenRoboBrain):
         """测试ROS2命令格式"""
         result = await brain.process("去厨房拿水杯")
         
@@ -221,15 +221,15 @@ class TestConcurrentProcessing:
     
     @pytest_asyncio.fixture
     async def brain(self):
-        """创建KaiBrain实例"""
-        brain = KaiBrain(mock_ros2=True)
+        """创建OpenRoboBrain实例"""
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         await brain.start()
         yield brain
         await brain.stop()
     
     @pytest.mark.asyncio
-    async def test_concurrent_requests(self, brain: KaiBrain):
+    async def test_concurrent_requests(self, brain: OpenRoboBrain):
         """测试并发请求处理"""
         inputs = ["你好", "去厨房", "拿杯子", "停止", "再见"]
         
@@ -250,7 +250,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_process_before_start(self):
         """测试未启动时调用process"""
-        brain = KaiBrain(mock_ros2=True)
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         # 不调用start()
         
@@ -265,7 +265,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_empty_input(self):
         """测试空输入"""
-        brain = KaiBrain(mock_ros2=True)
+        brain = OpenRoboBrain(mock_ros2=True)
         await brain.initialize()
         await brain.start()
         

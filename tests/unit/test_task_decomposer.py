@@ -1,4 +1,4 @@
-"""
+﻿"""
 任务拆解器单元测试
 
 测试TaskDecomposer的模板分解和规则分解功能。
@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from unittest.mock import AsyncMock, MagicMock
 
-from kaibrain.agent.orchestrator.task_decomposer import (
+from orb.agent.orchestrator.task_decomposer import (
     TaskDecomposer,
     Task,
     TaskType,

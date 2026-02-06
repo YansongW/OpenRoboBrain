@@ -1,7 +1,7 @@
-"""
+﻿"""
 Pytest 配置和公共 fixtures
 
-KaiBrain 测试配置。
+OpenRoboBrain 测试配置。
 """
 
 import asyncio
@@ -145,5 +145,5 @@ def agent_config() -> dict:
 def clean_env(monkeypatch):
     """清理测试环境变量"""
     # 设置测试环境
-    monkeypatch.setenv("KAIBRAIN_ENV", "test")
-    monkeypatch.setenv("KAIBRAIN_DEBUG", "1")
+    monkeypatch.setenv("ORB_ENV", "test")
+    monkeypatch.setenv("ORB_DEBUG", "1")

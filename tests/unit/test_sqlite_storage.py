@@ -1,4 +1,4 @@
-"""
+﻿"""
 SQLite 存储适配器单元测试
 """
 
@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 from pathlib import Path
 
-from kaibrain.data.storage.relational import (
+from orb.data.storage.relational import (
     SQLiteStorage,
     DatabaseConfig,
     QueryResult,
@@ -23,7 +23,7 @@ class TestDatabaseConfig:
     def test_default_config(self):
         """测试默认配置"""
         config = DatabaseConfig()
-        assert config.database == "kaibrain.db"
+        assert config.database == "orb.db"
         assert config.pool_size == 5
         
     def test_memory_database(self):

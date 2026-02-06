@@ -1,8 +1,8 @@
-# KaiBrain 风险管理
+# OpenRoboBrain 风险管理
 
 ## 概述
 
-本文档记录 KaiBrain 项目的已识别风险、缓解措施和跟踪状态。所有风险按严重程度分级，并定期评审。
+本文档记录 OpenRoboBrain 项目的已识别风险、缓解措施和跟踪状态。所有风险按严重程度分级，并定期评审。
 
 ---
 
@@ -51,7 +51,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/tools/builtin/shell.py` |
+| **位置** | `orb/system/tools/builtin/shell.py` |
 | **描述** | 简单字符串分割无法防止复杂命令注入，攻击者可使用 `$(command)`、反引号、环境变量等绕过安全检查 |
 | **影响** | LLM生成恶意命令 → 机器人执行危险操作 → 物理损坏或安全事故 |
 | **状态** | `OPEN` |
@@ -67,7 +67,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/agent/runtime/tool_executor.py` |
+| **位置** | `orb/agent/runtime/tool_executor.py` |
 | **描述** | `ToolPolicy.check()` 存在但未在 `ToolExecutor.execute()` 中调用，`apply_policy` 参数可被禁用 |
 | **影响** | 安全策略形同虚设 → Agent可执行任意工具 → 机器人失控 |
 | **状态** | `RESOLVED` ✅ |
@@ -84,7 +84,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/agent/subagent/spawn.py` |
+| **位置** | `orb/agent/subagent/spawn.py` |
 | **描述** | `stop_spawn()` 仅更新状态标志为 CANCELLED，不会真正取消正在执行的 asyncio 任务 |
 | **影响** | 紧急停止命令无效 → Agent继续执行危险动作 → 可能造成伤害 |
 | **状态** | `RESOLVED` ✅ |
@@ -101,7 +101,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/brain_cerebellum_bridge.py` |
+| **位置** | `orb/system/brain_pipeline/brain_cerebellum_bridge.py` |
 | **描述** | `emergency_stop()` 执行期间，新命令可能被添加到队列，导致停止不完整 |
 | **影响** | 紧急停止期间新动作被执行 → 停止失效 |
 | **状态** | `OPEN` |
@@ -117,7 +117,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/middleware/`, `kaibrain/hardware/` |
+| **位置** | `orb/middleware/`, `orb/hardware/` |
 | **描述** | ROS2集成、传感器/执行器驱动均未实现，仅为空接口 |
 | **影响** | 无法连接真实机器人硬件，系统无法实际运行 |
 | **状态** | `OPEN` |
@@ -135,7 +135,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/message_bus.py` |
+| **位置** | `orb/system/brain_pipeline/message_bus.py` |
 | **描述** | `_queues` 字典中的队列无大小限制，高负载下可能无限增长 |
 | **影响** | 内存耗尽 → 系统崩溃 |
 | **状态** | `RESOLVED` ✅ |
@@ -152,7 +152,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/message_bus.py` |
+| **位置** | `orb/system/brain_pipeline/message_bus.py` |
 | **描述** | `request()` 方法中，Future创建和消息发送之间存在竞态，响应可能在 `send()` 完成前到达 |
 | **影响** | 响应丢失 → 超时 → 任务失败 |
 | **状态** | `RESOLVED` ✅ |
@@ -169,7 +169,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/tools/builtin/http.py` |
+| **位置** | `orb/system/tools/builtin/http.py` |
 | **描述** | 无URL验证，可访问内部服务（localhost、127.0.0.1、169.254.169.254等） |
 | **影响** | 信息泄露、权限提升、内部服务攻击 |
 | **状态** | `OPEN` |
@@ -185,7 +185,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/tools/builtin/file.py` |
+| **位置** | `orb/system/tools/builtin/file.py` |
 | **描述** | 无 `../` 路径检查，递归删除功能可删除整个目录 |
 | **影响** | 读取/删除任意文件 → 系统破坏 |
 | **状态** | `OPEN` |
@@ -219,7 +219,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/task_pipeline.py` |
+| **位置** | `orb/system/brain_pipeline/task_pipeline.py` |
 | **描述** | 检查-创建操作非原子，同一task_id可能创建重复总线 |
 | **影响** | 消息路由混乱 |
 | **状态** | `OPEN` |
@@ -232,7 +232,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/websocket_server.py` |
+| **位置** | `orb/system/brain_pipeline/websocket_server.py` |
 | **描述** | 超时的请求不会从 `_pending_requests` 中清理 |
 | **影响** | 内存增长 |
 | **状态** | `OPEN` |
@@ -245,7 +245,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/agent/subagent/spawn.py` |
+| **位置** | `orb/agent/subagent/spawn.py` |
 | **描述** | `run_timeout_seconds=0` 表示无超时限制 |
 | **影响** | Agent可无限运行 |
 | **状态** | `OPEN` |
@@ -258,7 +258,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/agent/security/permission.py` |
+| **位置** | `orb/agent/security/permission.py` |
 | **描述** | 审计日志限制10000条，仅存内存，崩溃丢失 |
 | **影响** | 无法取证、无法追溯安全事件 |
 | **状态** | `OPEN` |
@@ -271,7 +271,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/agent/runtime/agent_loop.py` |
+| **位置** | `orb/agent/runtime/agent_loop.py` |
 | **描述** | 默认 `max_iterations=50`，如设置过高可能长时间占用资源 |
 | **影响** | 资源耗尽 |
 | **状态** | `OPEN` |
@@ -299,7 +299,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/llm/providers/openai.py` |
+| **位置** | `orb/system/llm/providers/openai.py` |
 | **描述** | JSON解析无大小限制 |
 | **影响** | 极端情况下可能OOM |
 | **状态** | `ACCEPTED` |

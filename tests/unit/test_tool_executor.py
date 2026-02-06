@@ -1,11 +1,11 @@
-"""
+﻿"""
 工具执行器单元测试
 """
 
 import asyncio
 import pytest
 
-from kaibrain.agent.runtime.tool_executor import (
+from orb.agent.runtime.tool_executor import (
     ToolExecutor,
     ToolRegistry,
     ToolCall,

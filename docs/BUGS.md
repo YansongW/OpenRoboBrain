@@ -1,8 +1,8 @@
-# KaiBrain BUG 管理
+# OpenRoboBrain BUG 管理
 
 ## 概述
 
-本文档记录 KaiBrain 项目的已知BUG、修复进度和历史记录。
+本文档记录 OpenRoboBrain 项目的已知BUG、修复进度和历史记录。
 
 ---
 
@@ -65,7 +65,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/message_bus.py` |
+| **位置** | `orb/system/brain_pipeline/message_bus.py` |
 | **版本** | v0.1.0-alpha |
 | **描述** | `request()` 方法创建的 Future 在超时后未从 `_pending_responses` 中清理，导致字典持续增长 |
 | **复现步骤** | 1. 发送大量请求<br>2. 让部分请求超时<br>3. 检查 `_pending_responses` 大小 |
@@ -83,7 +83,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/task_pipeline.py` |
+| **位置** | `orb/system/brain_pipeline/task_pipeline.py` |
 | **版本** | v0.1.0-alpha |
 | **描述** | 并发调用时可能为同一 task_id 创建多个清理定时器 |
 | **复现步骤** | 1. 并发调用 `schedule_cleanup()` 使用相同 task_id<br>2. 观察定时器数量 |
@@ -99,7 +99,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/tools/builtin/shell.py:_extract_base_command()` |
+| **位置** | `orb/system/tools/builtin/shell.py:_extract_base_command()` |
 | **版本** | v0.1.0-alpha |
 | **描述** | 命令提取使用简单字符串分割，无法正确处理引号内的分隔符 |
 | **示例** | `echo "hello; world"` 被错误拆分 |
@@ -113,7 +113,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/websocket_server.py` |
+| **位置** | `orb/system/brain_pipeline/websocket_server.py` |
 | **版本** | v0.1.0-alpha |
 | **描述** | `datetime.fromisoformat()` 解析错误未处理，可能导致假断开 |
 | **状态** | `CONFIRMED` |
@@ -126,7 +126,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/state_sync.py:_notify_state_change()` |
+| **位置** | `orb/system/brain_pipeline/state_sync.py:_notify_state_change()` |
 | **版本** | v0.1.0-alpha |
 | **描述** | 一个回调异常会阻塞后续回调执行 |
 | **状态** | `CONFIRMED` |
@@ -139,7 +139,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/brain_pipeline/brain_cerebellum_bridge.py` |
+| **位置** | `orb/system/brain_pipeline/brain_cerebellum_bridge.py` |
 | **版本** | v0.1.0-alpha |
 | **描述** | `all_completed` 和 `any_failed` 检查之间状态可能变化 |
 | **状态** | `CONFIRMED` |
@@ -154,7 +154,7 @@
 
 | 属性 | 值 |
 |------|-----|
-| **位置** | `kaibrain/system/tools/builtin/shell.py` |
+| **位置** | `orb/system/tools/builtin/shell.py` |
 | **版本** | v0.1.0-alpha |
 | **描述** | 用户提供的 `env` 字典直接合并，未验证键值安全性 |
 | **状态** | `NEW` |

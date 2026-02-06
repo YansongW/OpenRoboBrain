@@ -1,4 +1,4 @@
-"""
+﻿"""
 消息总线单元测试
 
 测试框架修复：
@@ -11,12 +11,12 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from kaibrain.system.brain_pipeline.message_bus import (
+from orb.system.brain_pipeline.message_bus import (
     MessageBus,
     PendingRequest,
     DEFAULT_QUEUE_MAXSIZE,
 )
-from kaibrain.system.brain_pipeline.protocol import Message, MessageType
+from orb.system.brain_pipeline.protocol import Message, MessageType
 
 
 class TestPendingRequest:

@@ -1,4 +1,4 @@
-"""
+﻿"""
 Subagent 终止机制测试
 
 测试框架修复：
@@ -12,13 +12,13 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from kaibrain.agent.subagent.spawn import (
+from orb.agent.subagent.spawn import (
     SubAgentSpawner,
     SpawnRequest,
     SpawnResult,
     SpawnStatus,
 )
-from kaibrain.agent.subagent.concurrency import ConcurrencyController
+from orb.agent.subagent.concurrency import ConcurrencyController
 
 
 class MockConcurrencyController:

@@ -1,12 +1,12 @@
-# KaiBrain 系统架构
+# OpenRoboBrain 系统架构
 
 ## 核心设计原则：大脑-小脑解耦
 
-KaiBrain 采用**大脑-小脑双管道架构**，两者完全解耦但通过桥接器保持状态同步。
+OpenRoboBrain 采用**大脑-小脑双管道架构**，两者完全解耦但通过桥接器保持状态同步。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        KaiBrain 系统                             │
+│                        OpenRoboBrain 系统                             │
 ├────────────────────────────┬────────────────────────────────────┤
 │       大脑 (Brain)          │        小脑 (Cerebellum)            │
 │    高层次智能决策            │        低层次运动控制               │
@@ -266,7 +266,7 @@ flowchart TB
 ### 5.1 启动大脑服务器
 
 ```python
-from kaibrain.system.brain_pipeline import (
+from orb.system.brain_pipeline import (
     create_brain_server,
     create_bridge,
 )
@@ -283,7 +283,7 @@ await bridge.initialize()
 ### 5.2 Agent 连接
 
 ```python
-from kaibrain.system.brain_pipeline import create_brain_client
+from orb.system.brain_pipeline import create_brain_client
 
 # Agent 连接到大脑服务器
 client = create_brain_client(
@@ -302,7 +302,7 @@ response = await client.request("vision-agent", {"query": "..."}, timeout=30.0)
 ### 5.3 发送命令到小脑
 
 ```python
-from kaibrain.system.brain_pipeline import BrainCommand, CommandPriority
+from orb.system.brain_pipeline import BrainCommand, CommandPriority
 
 command = BrainCommand(
     command_type="move_to",
@@ -351,7 +351,7 @@ feedback = await bridge.send_command(command, wait_for_completion=True)
 在部署前运行风险检查：
 
 ```python
-from kaibrain.system.services import run_risk_check
+from orb.system.services import run_risk_check
 
 # 运行启动检查
 report = await run_risk_check()

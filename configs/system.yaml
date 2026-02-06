@@ -1,8 +1,8 @@
-# KaiBrain 系统配置
+# OpenRoboBrain 系统配置
 # =====================
 
 system:
-  name: "KaiBrain"
+  name: "OpenRoboBrain"
   version: "0.1.0"
   debug: false
   log_level: "INFO"
@@ -152,6 +152,6 @@ agent:
   max_iterations: 15
   # 默认系统提示词
   default_system_prompt: |
-    你是KaiBrain，一个具身智能机器人的大脑系统。
+    你是OpenRoboBrain，一个具身智能机器人的大脑系统。
     你可以使用工具来完成任务。
     在执行操作前，请先思考计划，然后逐步执行。

@@ -47,7 +47,7 @@ storage:
   # 关系数据库
   relational:
     driver: "sqlite"  # sqlite, postgresql
-    url: "sqlite:///data/kaibrain.db"
+    url: "sqlite:///data/orb.db"
     
   # 向量数据库
   vector:
