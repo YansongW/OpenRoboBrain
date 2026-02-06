@@ -1,4 +1,4 @@
-﻿"""
+"""
 大脑-小脑桥接器 (Brain-Cerebellum Bridge)
 
 大脑管道和小脑管道之间的同步机制。
@@ -86,14 +86,21 @@ class BrainCommand:
     
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "commandId": self.command_id,
-            "commandType": self.command_type,
+            # snake_case (供 MuJoCo 仿真、ROS2 Monitor 等消费)
+            "command_id": self.command_id,
+            "command_type": self.command_type,
             "parameters": self.parameters,
             "priority": self.priority.value,
+            "source_agent": self.source_agent,
+            "timeout_seconds": self.timeout_seconds,
+            "created_at": self.created_at,
+            "metadata": self.metadata,
+            # camelCase (兼容已有的消息总线协议)
+            "commandId": self.command_id,
+            "commandType": self.command_type,
             "sourceAgent": self.source_agent,
             "timeoutSeconds": self.timeout_seconds,
             "createdAt": self.created_at,
-            "metadata": self.metadata,
         }
 
 

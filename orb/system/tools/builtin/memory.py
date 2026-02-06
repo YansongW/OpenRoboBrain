@@ -308,7 +308,7 @@ def register_memory_tools(
     )
 
     for tool in tools.get_tools():
-        tool_executor.register(
+        tool_executor.registry.register(
             name=tool.name,
             handler=tool.handler,
             description=tool.description,

@@ -43,7 +43,7 @@ class CommandBroadcaster(LoggerMixin):
         return self._running
 
     async def start(self) -> None:
-        """启动 WebSocket 服务器"""
+        """启动 WebSocket 服务器（含重试和端口回退机制）"""
         try:
             import websockets
         except ImportError:
@@ -53,18 +53,36 @@ class CommandBroadcaster(LoggerMixin):
             )
             return
 
-        try:
-            self._server = await websockets.serve(
-                self._handle_client,
-                self._host,
-                self._port,
-            )
-            self._running = True
-            self.logger.info(
-                f"命令广播器已启动: ws://{self._host}:{self._port}"
-            )
-        except OSError as e:
-            self.logger.warning(f"命令广播器启动失败 (端口 {self._port} 可能被占用): {e}")
+        import websockets
+
+        # 尝试在主端口和备用端口上启动，每个端口重试最多 2 次
+        ports_to_try = [self._port, self._port + 1, self._port + 2]
+        for port in ports_to_try:
+            for attempt in range(2):
+                try:
+                    self._server = await websockets.serve(
+                        self._handle_client,
+                        self._host,
+                        port,
+                        reuse_address=True,
+                    )
+                    self._port = port
+                    self._running = True
+                    self.logger.info(
+                        f"命令广播器已启动: ws://{self._host}:{self._port}"
+                    )
+                    return
+                except OSError as e:
+                    self.logger.warning(
+                        f"命令广播器绑定端口 {port} 失败 (尝试 {attempt+1}/2): {e}"
+                    )
+                    if attempt == 0:
+                        await asyncio.sleep(1)  # 短暂等待后重试
+
+        self.logger.error(
+            f"命令广播器启动失败: 所有端口 {ports_to_try} 均不可用。"
+            f"请检查是否有残留进程占用端口。"
+        )
 
     async def stop(self) -> None:
         """停止 WebSocket 服务器"""

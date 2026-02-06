@@ -1,4 +1,4 @@
-﻿"""
+"""
 Stream Handler
 
 流式响应处理器，负责：
@@ -180,11 +180,16 @@ class StreamHandler(LoggerMixin):
         if len(self._buffer) > self._buffer_size:
             self._buffer.pop(0)
             
-        # 添加到队列
+        # 添加到队列（满时丢弃最旧事件腾出空间，避免刷屏警告）
+        if self._event_queue.full():
+            try:
+                self._event_queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
         try:
             self._event_queue.put_nowait(event)
         except asyncio.QueueFull:
-            self.logger.warning("事件队列已满，丢弃事件")
+            pass  # 极端并发下静默丢弃
             
         # 通知订阅者
         for callback in self._subscribers:
