@@ -33,13 +33,20 @@ class C:
 
 # 命令类型到 ROS2 Topic 的映射
 COMMAND_TO_TOPIC = {
+    "forward": "/brain/cmd_vel",
+    "backward": "/brain/cmd_vel",
     "navigate": "/brain/cmd_vel",
     "move": "/brain/cmd_vel",
+    "turn_left": "/brain/cmd_vel",
+    "turn_right": "/brain/cmd_vel",
+    "circle_left": "/brain/cmd_vel",
+    "circle_right": "/brain/cmd_vel",
+    "spin_left": "/brain/cmd_vel",
+    "spin_right": "/brain/cmd_vel",
     "stop": "/brain/emergency_stop",
     "grasp": "/brain/manipulation",
     "place": "/brain/manipulation",
     "pour": "/brain/manipulation",
-    "turn": "/brain/cmd_vel",
     "patrol": "/brain/navigation/goal",
     "clean": "/brain/task/clean",
 }

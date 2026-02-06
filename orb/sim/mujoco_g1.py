@@ -46,18 +46,37 @@ class C:
 
 # ============== 命令映射 ==============
 
-# BrainCommand command_type -> velocity cmd [vx, vy, wz]
+# BrainCommand command_type -> 默认 velocity [vx, vy, wz]
+# 这是 fallback 值，实际速度优先从 parameters 中提取
 COMMAND_VELOCITY_MAP = {
-    "navigate": [0.5, 0.0, 0.0],     # 前进
-    "move": [0.5, 0.0, 0.0],         # 前进
-    "stop": [0.0, 0.0, 0.0],         # 停止
-    "turn_left": [0.0, 0.0, 0.5],    # 左转
-    "turn_right": [0.0, 0.0, -0.5],  # 右转
-    "patrol": [0.3, 0.0, 0.1],       # 巡逻 (慢速+微转)
-    "grasp": [0.0, 0.0, 0.0],        # 抓取时停止移动
-    "place": [0.0, 0.0, 0.0],        # 放置时停止移动
-    "pour": [0.0, 0.0, 0.0],         # 倒水时停止移动
-    "clean": [0.2, 0.0, 0.2],        # 清扫 (慢速+转)
+    # 移动类 — 命令触发 policy 切换
+    "forward":     [0.8, 0.0, 0.0],    # 前进
+    "backward":    [-0.5, 0.0, 0.0],   # 后退
+    "turn_left":   [0.2, 0.0, 0.8],    # 左转（边走边转）
+    "turn_right":  [0.2, 0.0, -0.8],   # 右转
+    "stop":        [0.0, 0.0, 0.0],    # 停止
+    "navigate":    [0.8, 0.0, 0.0],    # 导航（默认前进）
+    "move":        [0.8, 0.0, 0.0],    # 通用移动
+    # 组合运动 — 同时前进+转弯
+    "circle_left": [0.5, 0.0, 0.6],    # 左弧线/左圆圈
+    "circle_right":[0.5, 0.0, -0.6],   # 右弧线/右圆圈
+    "spin_left":   [0.0, 0.0, 1.5],    # 原地左旋
+    "spin_right":  [0.0, 0.0, -1.5],   # 原地右旋
+    # 任务类 — 到达后停止移动
+    "grasp":       [0.0, 0.0, 0.0],
+    "place":       [0.0, 0.0, 0.0],
+    "pour":        [0.0, 0.0, 0.0],
+    "patrol":      [0.4, 0.0, 0.2],    # 巡逻
+    "clean":       [0.3, 0.0, 0.3],    # 清扫
+}
+
+# 速度描述词映射 — 从 parameters.speed 提取
+SPEED_MULTIPLIER = {
+    "very_slow": 0.3,
+    "slow": 0.5,
+    "normal": 1.0,
+    "fast": 1.5,
+    "very_fast": 2.0,
 }
 
 
@@ -75,27 +94,81 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
     return (target_q - q) * kp + (target_dq - dq) * kd
 
 
+# 各动作类型的默认持续时间（秒）
+DEFAULT_DURATION = {
+    "forward":    3.0,
+    "backward":   2.5,
+    "turn_left":  2.0,
+    "turn_right": 2.0,
+    "navigate":   4.0,
+    "move":       3.0,
+    "patrol":     5.0,
+    "clean":      4.0,
+    "stop":       0.0,   # 立即生效，无持续
+    "circle_left":4.0,
+    "circle_right":4.0,
+    "spin_left":  5.0,
+    "spin_right": 5.0,
+    "grasp":      2.0,
+    "place":      2.0,
+    "pour":       3.0,
+}
+
+
 class WebSocketCommandReceiver:
     """
     WebSocket 命令接收器 (在后台线程运行)
 
     连接到 OpenRoboBrain 的命令广播器，
     将接收到的 BrainCommand 转换为速度指令。
+
+    支持命令队列：多条命令按序执行，每条持续指定时间后自动切换下一条。
+    stop 命令为紧急中断，清空队列并立即停止。
     """
 
     def __init__(self, host: str = "localhost", port: int = 8765):
         self._host = host
         self._port = port
+        # 当前执行的速度
         self._current_cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
         self._lock = threading.Lock()
         self._connected = False
         self._running = False
         self._last_command_type = "idle"
         self._command_count = 0
+        # 命令队列: [(velocity_array, duration_seconds, cmd_type_label), ...]
+        self._queue: List = []
+        self._current_end_time: float = 0.0  # 当前命令结束的时间戳
 
     @property
     def current_cmd(self) -> np.ndarray:
+        """获取当前速度指令（由主循环每帧调用）"""
         with self._lock:
+            now = time.time()
+            # 当前命令已到期，切换到下一条
+            if self._current_end_time > 0 and now >= self._current_end_time:
+                if self._queue:
+                    vel, dur, label = self._queue.pop(0)
+                    self._current_cmd = vel
+                    self._current_end_time = now + dur if dur > 0 else 0.0
+                    self._last_command_type = label
+                    ts = datetime.now().strftime("%H:%M:%S")
+                    print(
+                        f"{C.DIM}[{ts}]{C.RESET} "
+                        f"{C.YELLOW}NEXT{C.RESET}: {C.BOLD}{label.upper()}{C.RESET} "
+                        f"-> vel=[{vel[0]:.2f}, {vel[1]:.2f}, {vel[2]:.2f}] "
+                        f"({dur:.1f}s)"
+                    )
+                else:
+                    # 队列执行完毕，自动停止
+                    self._current_cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                    self._current_end_time = 0.0
+                    self._last_command_type = "idle"
+                    ts = datetime.now().strftime("%H:%M:%S")
+                    print(
+                        f"{C.DIM}[{ts}]{C.RESET} "
+                        f"{C.GREEN}DONE{C.RESET}: 序列执行完毕，自动停止"
+                    )
             return self._current_cmd.copy()
 
     @property
@@ -151,8 +224,45 @@ class WebSocketCommandReceiver:
                 if self._running:
                     await asyncio.sleep(2)
 
+    def _resolve_velocity(self, cmd_type: str, params: dict) -> list:
+        """从命令类型和参数解析出速度向量"""
+        base_vel = list(COMMAND_VELOCITY_MAP.get(cmd_type, [0.0, 0.0, 0.0]))
+
+        # 精确速度参数覆盖
+        if "vx" in params:
+            base_vel[0] = float(params["vx"])
+        if "vy" in params:
+            base_vel[1] = float(params["vy"])
+        if "wz" in params:
+            base_vel[2] = float(params["wz"])
+
+        # speed 描述词或数值乘数
+        speed_param = params.get("speed", None)
+        if speed_param is not None:
+            if isinstance(speed_param, str):
+                multiplier = SPEED_MULTIPLIER.get(speed_param, 1.0)
+            else:
+                multiplier = float(speed_param) if float(speed_param) > 0 else 1.0
+            base_vel[0] *= multiplier
+            base_vel[2] *= multiplier
+
+        # 方向参数
+        direction = params.get("direction", "")
+        if direction == "left":
+            base_vel[2] = abs(base_vel[2]) if base_vel[2] != 0 else 0.6
+        elif direction == "right":
+            base_vel[2] = -abs(base_vel[2]) if base_vel[2] != 0 else -0.6
+
+        return base_vel
+
     def _process_message(self, raw: str):
-        """处理 WebSocket 消息"""
+        """
+        处理 WebSocket 消息
+
+        单条命令 → 立即执行（替换当前动作）
+        多条命令同批到达 → 第一条立即执行，后续入队列按序执行
+        stop 命令 → 清空队列，立即停止
+        """
         try:
             data = json.loads(raw)
             if data.get("type") != "brain_command":
@@ -162,27 +272,53 @@ class WebSocketCommandReceiver:
             cmd_type = command.get("command_type", "")
             params = command.get("parameters", {})
 
-            # 映射到速度指令
-            velocity = COMMAND_VELOCITY_MAP.get(cmd_type, [0.0, 0.0, 0.0])
+            vel = self._resolve_velocity(cmd_type, params)
 
-            # 从参数中提取速度修正
-            if "speed" in params:
-                velocity[0] = float(params["speed"])
-            if "angular_speed" in params:
-                velocity[2] = float(params["angular_speed"])
-
-            with self._lock:
-                self._current_cmd = np.array(velocity, dtype=np.float32)
-
-            self._last_command_type = cmd_type
-            self._command_count += 1
+            # 持续时间: 优先从参数读取，否则使用默认值
+            try:
+                duration = float(params.get("duration", DEFAULT_DURATION.get(cmd_type, 3.0)))
+            except (TypeError, ValueError):
+                duration = DEFAULT_DURATION.get(cmd_type, 3.0)
 
             ts = datetime.now().strftime("%H:%M:%S")
-            print(
-                f"{C.DIM}[{ts}]{C.RESET} "
-                f"{C.CYAN}CMD{C.RESET}: {C.BOLD}{cmd_type}{C.RESET} "
-                f"-> vel=[{velocity[0]:.1f}, {velocity[1]:.1f}, {velocity[2]:.1f}]"
-            )
+            self._command_count += 1
+
+            with self._lock:
+                if cmd_type == "stop":
+                    # 紧急停止：清空队列，立即停止
+                    self._queue.clear()
+                    self._current_cmd = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+                    self._current_end_time = 0.0
+                    self._last_command_type = "stop"
+                    print(
+                        f"{C.DIM}[{ts}]{C.RESET} "
+                        f"{C.RED}STOP{C.RESET}: 紧急停止，队列已清空"
+                    )
+                elif self._current_end_time == 0.0 and not self._queue:
+                    # 当前空闲，立即执行
+                    self._current_cmd = np.array(vel, dtype=np.float32)
+                    self._current_end_time = time.time() + duration if duration > 0 else 0.0
+                    self._last_command_type = cmd_type
+                    print(
+                        f"{C.DIM}[{ts}]{C.RESET} "
+                        f"{C.CYAN}EXEC{C.RESET}: {C.BOLD}{cmd_type.upper()}{C.RESET} "
+                        f"-> vel=[{vel[0]:.2f}, {vel[1]:.2f}, {vel[2]:.2f}] "
+                        f"({duration:.1f}s)"
+                    )
+                else:
+                    # 当前忙碌，入队列等待
+                    self._queue.append((
+                        np.array(vel, dtype=np.float32),
+                        duration,
+                        cmd_type,
+                    ))
+                    queue_len = len(self._queue)
+                    print(
+                        f"{C.DIM}[{ts}]{C.RESET} "
+                        f"{C.YELLOW}QUEUE[{queue_len}]{C.RESET}: {cmd_type.upper()} "
+                        f"-> vel=[{vel[0]:.2f}, {vel[1]:.2f}, {vel[2]:.2f}] "
+                        f"({duration:.1f}s)"
+                    )
 
         except Exception as e:
             pass
@@ -263,7 +399,6 @@ def run_simulation(
     cmd_scale = np.array(config["cmd_scale"], dtype=np.float32)
     num_actions = config["num_actions"]
     num_obs = config["num_obs"]
-
     # 初始化变量
     action = np.zeros(num_actions, dtype=np.float32)
     target_dof_pos = default_angles.copy()
@@ -281,9 +416,10 @@ def run_simulation(
     policy = torch.jit.load(policy_path)
     print(f"{C.GREEN}策略加载成功{C.RESET}")
 
-    # 启动 WebSocket 接收器
+    # 启动 WebSocket 接收器 (机器人默认站定，等待指令)
     receiver = WebSocketCommandReceiver(ws_host, ws_port)
     receiver.start_background()
+    print(f"  初始状态: 站定等待指令")
 
     print(f"\n{C.BRIGHT_CYAN}{C.BOLD}MuJoCo G1 仿真已启动{C.RESET}")
     print(f"  WebSocket: ws://{ws_host}:{ws_port}")

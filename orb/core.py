@@ -182,8 +182,10 @@ class OpenRoboBrain:
             from orb.system.brain_pipeline.command_broadcaster import get_broadcaster
             self._broadcaster = get_broadcaster()
             await self._broadcaster.start()
+            if not self._broadcaster.is_running:
+                logger.warning("命令广播器未能成功启动，ROS2 Monitor 将无法连接")
         except Exception as e:
-            logger.debug(f"命令广播器启动跳过: {e}")
+            logger.warning(f"命令广播器启动失败: {e}")
         
         # 9. 注册 Memory 工具到 ToolExecutor (如果 LLM 管线可用)
         if self._tool_executor and self._memory_stream:
@@ -381,23 +383,45 @@ class OpenRoboBrain:
     
     def _get_system_prompt(self) -> str:
         """获取系统提示词"""
-        return """你是 OpenRoboBrain，一个具身智能服务机器人的大脑系统。
+        return """你是 OpenRoboBrain，一个 Unitree G1 人形机器人的大脑系统。
 
-你的能力:
-- 理解用户的自然语言指令
-- 将指令转化为具体的机器人动作（导航、抓取、放置等）
-- 进行友好的对话
+## 核心职责
+将用户的自然语言指令分解为原子动作序列，驱动机器人执行。
 
-请以 JSON 格式回复，包含:
-{
-    "chat_response": "给用户的自然语言回复",
-    "ros2_commands": [
-        {"command_type": "命令类型", "parameters": {"参数": "值"}}
-    ]
-}
+## 可用原子动作 (command_type)
 
-如果不需要机器人动作，ros2_commands 为空数组 []。
-可用的命令类型: navigate, grasp, place, pour, stop, patrol, clean"""
+移动类:
+- forward: 向前行走。参数 speed: slow/normal/fast/very_fast
+- backward: 向后退。参数 speed: slow/normal
+- turn_left: 向左转约90度。参数 speed: slow/normal/fast
+- turn_right: 向右转约90度。参数 speed: slow/normal/fast
+- stop: 立即停止所有运动
+
+组合运动:
+- circle_left: 走左圆弧（同时前进+左转，用于走圆圈）
+- circle_right: 走右圆弧（同时前进+右转）
+- spin_left: 原地向左旋转360度
+- spin_right: 原地向右旋转360度
+
+任务类:
+- navigate: 导航到目标位置。参数 target, speed
+- grasp: 抓取物体。参数 object
+- place: 放置物体。参数 location
+- pour: 倒水
+- patrol: 巡逻
+- clean: 清扫
+
+## 输出格式 (严格 JSON，不要输出任何其他内容)
+{"chat_response": "简短友好的回复", "ros2_commands": [{"command_type": "动作名", "parameters": {"speed": "normal"}}]}
+
+## 关键规则
+1. chat_response 必须提供
+2. 简单指令→1个动作。复杂指令→拆解为多个原子动作序列
+3. 速度词: "快/跑"→fast, "慢/小心"→slow, "冲"→very_fast
+4. "走圆圈/画圈"→circle_left。"转一圈/转360"→spin_left
+5. "停/站住/别动"→stop
+6. **无法执行的动作(如跳跃、飞行等)，ros2_commands 必须为空[]**，只在 chat_response 中说明
+7. 纯聊天(无需动作)→ros2_commands 为 []"""
         
     async def start(self) -> None:
         """启动系统"""
@@ -565,12 +589,23 @@ class OpenRoboBrain:
             
             # 尝试解析 JSON 格式响应
             parsed = self._parse_llm_response(response_text)
-            result.chat_response = parsed.get("chat_response", response_text)
             
             # 提取 ROS2 命令
             ros2_cmds = parsed.get("ros2_commands", [])
             if ros2_cmds:
                 await self._send_ros2_commands(ros2_cmds, trace_id, result)
+            
+            # 提取对话响应（如果 LLM 只返回了 JSON 没有 chat_response，生成友好文本）
+            chat_text = parsed.get("chat_response", "")
+            if not chat_text or chat_text == response_text:
+                # LLM 没有提供 chat_response，根据命令生成默认回复
+                if ros2_cmds:
+                    cmd_names = [c.get("command_type", "") for c in ros2_cmds if isinstance(c, dict)]
+                    result.chat_response = f"好的，正在执行: {', '.join(cmd_names)}"
+                else:
+                    result.chat_response = response_text
+            else:
+                result.chat_response = chat_text
             
             result.success = True
             result.metadata["tokens_used"] = run_result.tokens_used
@@ -703,18 +738,26 @@ class OpenRoboBrain:
                     await self._broadcaster.broadcast_command(cmd.to_dict())
     
     def _parse_llm_response(self, response_text: str) -> Dict[str, Any]:
-        """解析 LLM 响应 (可能是 JSON 或纯文本)"""
+        """
+        解析 LLM 响应
+        
+        支持的格式：
+        1. 纯 JSON: {"chat_response": "...", "ros2_commands": [...]}
+        2. 代码块包裹: ```json ... ```
+        3. 文本 + JSON 混合: 一段文本后跟 JSON 对象
+        4. 纯文本: 无 JSON 内容
+        """
         import re
         
-        # 尝试直接 JSON 解析
+        # 1. 尝试直接 JSON 解析
         try:
-            data = json.loads(response_text)
+            data = json.loads(response_text.strip())
             if isinstance(data, dict):
                 return data
         except (json.JSONDecodeError, TypeError):
             pass
         
-        # 尝试从代码块提取 JSON
+        # 2. 尝试从代码块提取 JSON
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', response_text)
         if json_match:
             try:
@@ -724,7 +767,49 @@ class OpenRoboBrain:
             except (json.JSONDecodeError, TypeError):
                 pass
         
-        # 纯文本回退
+        # 3. 尝试从混合文本中提取最后一个 JSON 对象
+        #    LLM 有时先输出文本，再附上 JSON
+        json_obj_match = re.search(
+            r'\{[^{}]*"(?:chat_response|ros2_commands)"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',
+            response_text,
+        )
+        if json_obj_match:
+            try:
+                data = json.loads(json_obj_match.group(0))
+                if isinstance(data, dict):
+                    # 如果 JSON 前面有文本且 JSON 里没有 chat_response，
+                    # 用前面的文本作为 chat_response
+                    prefix = response_text[:json_obj_match.start()].strip()
+                    if prefix and "chat_response" not in data:
+                        data["chat_response"] = prefix
+                    return data
+            except (json.JSONDecodeError, TypeError):
+                pass
+        
+        # 3b. 更宽松的匹配：找到包含 ros2_commands 的 JSON
+        brace_start = response_text.rfind('{"')
+        if brace_start >= 0:
+            # 从最后一个 { 开始尝试找匹配的 }
+            depth = 0
+            for i in range(brace_start, len(response_text)):
+                if response_text[i] == '{':
+                    depth += 1
+                elif response_text[i] == '}':
+                    depth -= 1
+                    if depth == 0:
+                        candidate = response_text[brace_start:i+1]
+                        try:
+                            data = json.loads(candidate)
+                            if isinstance(data, dict):
+                                prefix = response_text[:brace_start].strip()
+                                if prefix and "chat_response" not in data:
+                                    data["chat_response"] = prefix
+                                return data
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                        break
+        
+        # 4. 纯文本回退
         return {"chat_response": response_text, "ros2_commands": []}
     
     async def run(self) -> None:
