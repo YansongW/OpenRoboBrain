@@ -19,15 +19,15 @@
 
 ## M4: 自然对话 (进行中, feature/m4-natural-dialogue)
 
-### Phase 4.2: 自然对话 (能力层 interaction/) — 基础完成
+### Phase 4.2: 自然对话 (能力层 cognition/) — 基础完成
 
-- [x] **D-210** DialogueManager 自由推理式理解
-  - 文件: `orb/capability/interaction/dialogue.py`
+- [x] **D-210** LanguageUnderstanding 自由推理式理解
+  - 文件: `orb/capability/cognition/understanding.py`
   - 实现: LLM 思维链推理，无枚举分类，Understanding 数据结构
   - 9 个集成测试通过
 
 - [x] **D-211** 意图-行动分离架构
-  - core.py 重构: DialogueManager(能力层) 推理 → OA(Agent层) 编排
+  - core.py 重构: LanguageUnderstanding(认知能力) 推理 → OA(Agent层) 编排
   - OrchestratorAgent.execute_understanding() 接收推理结果
   - 消除了"LLM 必须同时理解+生成JSON"的问题
 

@@ -1,14 +1,14 @@
 """
-对话管理器 (Dialogue Manager)
+语言理解能力 (Language Understanding)
 
-自由推理式对话理解，不做枚举分类。
+自由推理式语言理解，不做枚举分类。
 
 核心理念：
 - LLM 像人一样理解用户输入：用户说了什么 → 为什么这么说 → 我该怎么做
 - 不使用 IntentType 枚举，行为从 LLM 推理中涌现
 - 完整记录推理链，为调试和未来反思学习提供数据
 
-位置: 能力层 (Capability Layer) → 交互能力 (interaction/)
+位置: 能力层 (Capability Layer) → 认知能力 (cognition/)
 """
 
 from __future__ import annotations
@@ -41,11 +41,11 @@ class Turn:
 
 
 @dataclass
-class DialogueContext:
+class CognitiveContext:
     """
-    对话上下文
+    认知上下文
 
-    DialogueManager 用来构建理解所需的上下文信息。
+    LanguageUnderstanding 用来构建理解所需的上下文信息。
     """
     history: List[Turn] = field(default_factory=list)
     memory_snippets: List[str] = field(default_factory=list)
@@ -130,34 +130,34 @@ UNDERSTANDING_PROMPT = """你是一个具身智能机器人的大脑。你需要
 - 如果不确定用户要什么，在 suggested_response 中追问"""
 
 
-# ============== DialogueManager ==============
+# ============== LanguageUnderstanding ==============
 
 
-class DialogueManager(LoggerMixin):
+class LanguageUnderstanding(LoggerMixin):
     """
-    对话管理器
+    语言理解能力
 
     自由推理式理解，不做枚举分类。
     让 LLM 像人一样思考：
     "用户说了什么 → 他为什么这么说 → 我该怎么做"
 
-    位置: 能力层 (Capability Layer) → 交互能力 (interaction/)
+    位置: 能力层 (Capability Layer) → 认知能力 (cognition/)
     """
 
     def __init__(self, llm: "BaseLLM"):
         """
-        初始化对话管理器
+        初始化语言理解能力
 
         Args:
             llm: LLM 实例（用于推理）
         """
         self._llm = llm
-        self._context = DialogueContext()
+        self._context = CognitiveContext()
         self._understanding_count = 0
 
     @property
-    def context(self) -> DialogueContext:
-        """当前对话上下文"""
+    def context(self) -> CognitiveContext:
+        """当前认知上下文"""
         return self._context
 
     async def understand(
@@ -197,7 +197,7 @@ class DialogueManager(LoggerMixin):
             )
             raw_output = response.content if hasattr(response, 'content') else str(response)
         except Exception as e:
-            logger.error(f"[{trace_id}] DialogueManager LLM 调用失败: {e}")
+            logger.error(f"[{trace_id}] LanguageUnderstanding LLM 调用失败: {e}")
             return Understanding(
                 raw_input=user_input,
                 reasoning=f"LLM 调用失败: {e}",
@@ -238,7 +238,6 @@ class DialogueManager(LoggerMixin):
         生成自然语言回复。
 
         如果 understanding 已包含 suggested_response 且质量足够，直接使用。
-        否则单独调用 LLM 生成回复。
 
         Args:
             understanding: 推理结果
@@ -256,7 +255,6 @@ class DialogueManager(LoggerMixin):
             )
             return reply
 
-        # fallback: 用 LLM 单独生成回复
         return "我理解了。"
 
     def _build_understanding_messages(
@@ -298,16 +296,9 @@ class DialogueManager(LoggerMixin):
         trace_id: str,
         llm_time_ms: float,
     ) -> Understanding:
-        """
-        从 LLM 输出中解析 Understanding。
+        """从 LLM 输出中解析 Understanding"""
+        reasoning = raw_output
 
-        LLM 输出格式: 思维链文本 + JSON 结论
-        """
-        import re
-
-        reasoning = raw_output  # 完整保留原始输出作为推理链
-
-        # 尝试从输出中提取 JSON 结论
         json_data = self._extract_json(raw_output)
 
         if json_data:
@@ -323,13 +314,12 @@ class DialogueManager(LoggerMixin):
                 raw_llm_output=raw_output,
             )
 
-        # JSON 解析失败，从纯文本推断
         logger.warning(f"[{trace_id}] 推理输出无 JSON，从文本推断")
         return Understanding(
             raw_input=user_input,
             reasoning=reasoning,
             summary=raw_output[:100],
-            requires_action=False,  # 安全默认：不行动
+            requires_action=False,
             suggested_response=raw_output.strip(),
             trace_id=trace_id,
             llm_time_ms=llm_time_ms,
@@ -340,7 +330,6 @@ class DialogueManager(LoggerMixin):
         """从文本中提取 JSON（支持代码块和混合格式）"""
         import re
 
-        # 1. 代码块中的 JSON
         match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
         if match:
             try:
@@ -348,13 +337,11 @@ class DialogueManager(LoggerMixin):
             except (json.JSONDecodeError, TypeError):
                 pass
 
-        # 2. 直接 JSON
         try:
             return json.loads(text.strip())
         except (json.JSONDecodeError, TypeError):
             pass
 
-        # 3. 文本中嵌入的 JSON 对象
         brace_start = text.rfind('{"')
         if brace_start >= 0:
             depth = 0

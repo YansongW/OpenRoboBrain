@@ -6,7 +6,7 @@ M4 自然对话系统集成测试
 2. 直接指令 → 自然回复 + ROS2 命令 (OA 编排)
 3. 隐含意图 → 推理出行动
 4. 情感表达 → 无命令
-5. DialogueManager 思维链完整性
+5. LanguageUnderstanding 思维链完整性
 6. Understanding 数据结构正确性
 """
 
@@ -20,8 +20,8 @@ from dataclasses import dataclass
 sys.path.insert(0, ".")
 
 
-class TestDialogueManager:
-    """DialogueManager 单元测试"""
+class TestLanguageUnderstanding:
+    """LanguageUnderstanding 单元测试"""
 
     def _create_mock_llm(self, response_content: str):
         """创建 mock LLM"""
@@ -34,7 +34,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_understand_chat(self):
         """闲聊: 不需要行动"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '我来分析一下用户说的话。\n'
@@ -45,9 +45,9 @@ class TestDialogueManager:
             '"suggested_response": "你好！今天有什么我可以帮你的吗？"}\n'
             '```'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("你好啊", trace_id="test-001")
+        understanding = await lu.understand("你好啊", trace_id="test-001")
 
         assert understanding.raw_input == "你好啊"
         assert understanding.requires_action is False
@@ -59,7 +59,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_understand_command(self):
         """直接指令: 需要行动"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '用户说"向前走"，这是一个明确的移动指令。\n'
@@ -70,9 +70,9 @@ class TestDialogueManager:
             '"suggested_response": "好的，我现在开始向前走。"}\n'
             '```'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("向前走", trace_id="test-002")
+        understanding = await lu.understand("向前走", trace_id="test-002")
 
         assert understanding.requires_action is True
         assert understanding.action_description == "向前行走"
@@ -81,7 +81,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_understand_implicit_intent(self):
         """隐含意图: 推理出行动"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '用户说"这里好暗"。分析：用户感到环境光线不足，暗示需要改善照明。\n'
@@ -92,9 +92,9 @@ class TestDialogueManager:
             '"suggested_response": "我注意到这里光线不太好，我来帮你开灯。"}\n'
             '```'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("这里好暗", trace_id="test-003")
+        understanding = await lu.understand("这里好暗", trace_id="test-003")
 
         assert understanding.requires_action is True
         assert "灯" in understanding.action_description or "照明" in understanding.action_description
@@ -102,7 +102,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_understand_emotion(self):
         """情感表达: 不需要行动"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '用户在表达不满情绪。我应该表示歉意，不需要物理动作。\n'
@@ -112,16 +112,16 @@ class TestDialogueManager:
             '"suggested_response": "非常抱歉给你带来了不好的体验，请告诉我怎样才能做得更好。"}\n'
             '```'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("你真笨", trace_id="test-004")
+        understanding = await lu.understand("你真笨", trace_id="test-004")
 
         assert understanding.requires_action is False
 
     @pytest.mark.asyncio
     async def test_understanding_log_dict(self):
         """Understanding.to_log_dict() 完整性"""
-        from orb.capability.interaction.dialogue import Understanding
+        from orb.capability.cognition.understanding import Understanding
 
         u = Understanding(
             raw_input="测试输入",
@@ -144,7 +144,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_context_history_maintained(self):
         """对话上下文历史维护"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '```json\n'
@@ -152,25 +152,25 @@ class TestDialogueManager:
             '"action_description": "", "suggested_response": "ok"}\n'
             '```'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        await dm.understand("第一句话", trace_id="t1")
-        await dm.understand("第二句话", trace_id="t2")
+        await lu.understand("第一句话", trace_id="t1")
+        await lu.understand("第二句话", trace_id="t2")
 
-        assert len(dm.context.history) == 2
-        assert dm.context.history[0].content == "第一句话"
-        assert dm.context.history[1].content == "第二句话"
+        assert len(lu.context.history) == 2
+        assert lu.context.history[0].content == "第一句话"
+        assert lu.context.history[1].content == "第二句话"
 
     @pytest.mark.asyncio
     async def test_llm_failure_graceful(self):
         """LLM 调用失败时的优雅降级"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = MagicMock()
         llm.chat = AsyncMock(side_effect=Exception("LLM 不可用"))
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("你好", trace_id="test-err")
+        understanding = await lu.understand("你好", trace_id="test-err")
 
         assert understanding.requires_action is False
         assert "抱歉" in understanding.suggested_response
@@ -179,7 +179,7 @@ class TestDialogueManager:
     @pytest.mark.asyncio
     async def test_json_extraction_mixed_format(self):
         """混合格式输出的 JSON 提取"""
-        from orb.capability.interaction.dialogue import DialogueManager
+        from orb.capability.cognition.understanding import LanguageUnderstanding
 
         llm = self._create_mock_llm(
             '让我想想用户说了什么。\n\n'
@@ -188,9 +188,9 @@ class TestDialogueManager:
             '"action_description": "导航到厨房", '
             '"suggested_response": "好的，我这就去厨房。"}'
         )
-        dm = DialogueManager(llm=llm)
+        lu = LanguageUnderstanding(llm=llm)
 
-        understanding = await dm.understand("去厨房", trace_id="test-mix")
+        understanding = await lu.understand("去厨房", trace_id="test-mix")
 
         assert understanding.requires_action is True
         assert understanding.summary == "去厨房"
@@ -202,7 +202,7 @@ class TestOrchestratorIntegration:
     @pytest.mark.asyncio
     async def test_execute_understanding(self):
         """OA 接收 Understanding 并编排执行"""
-        from orb.capability.interaction.dialogue import Understanding
+        from orb.capability.cognition.understanding import Understanding
         from orb.agent.orchestrator.orchestrator import OrchestratorAgent
 
         understanding = Understanding(

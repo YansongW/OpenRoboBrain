@@ -2,18 +2,11 @@
 交互能力
 
 包含：
-- 对话管理（DialogueManager）: 自由推理式意图理解
-- 语音交互
+- 语音交互 (ASR/TTS I/O 通道)
 - 手势交互
 - 表情表达
 等
+
+注意: 语言理解（认知推理）在 cognition/understanding.py，
+      本目录只负责 I/O 通道。
 """
-
-from orb.capability.interaction.dialogue import (
-    DialogueManager,
-    Understanding,
-    DialogueContext,
-    Turn,
-)
-
-__all__ = ["DialogueManager", "Understanding", "DialogueContext", "Turn"]

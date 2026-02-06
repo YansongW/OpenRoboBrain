@@ -123,9 +123,9 @@ class OpenRoboBrain:
         # 行为层
         self._behavior_executor: Optional["BehaviorExecutor"] = None
         
-        # 能力层 - 对话管理
-        self._dialogue_manager = None  # DialogueManager
-        self._orchestrator = None      # OrchestratorAgent
+        # 能力层 - 认知能力
+        self._language_understanding = None  # LanguageUnderstanding (cognition/)
+        self._orchestrator = None            # OrchestratorAgent
         
         # 记忆系统
         self._memory_stream: Optional["MemoryStream"] = None
@@ -275,9 +275,9 @@ class OpenRoboBrain:
                 llm=self._llm,
             )
             
-            # 创建 DialogueManager (能力层 - 自由推理式理解)
-            from orb.capability.interaction.dialogue import DialogueManager
-            self._dialogue_manager = DialogueManager(llm=self._llm)
+            # 创建 LanguageUnderstanding (能力层/认知 - 自由推理式理解)
+            from orb.capability.cognition.understanding import LanguageUnderstanding
+            self._language_understanding = LanguageUnderstanding(llm=self._llm)
             
             # 创建 OrchestratorAgent (Agent层 - 任务编排)
             from orb.agent.orchestrator.orchestrator import OrchestratorAgent
@@ -289,7 +289,7 @@ class OpenRoboBrain:
             )
             
             self._llm_available = True
-            logger.info("LLM 管线初始化完成 (DialogueManager + OA + AgentLoop + Compaction)")
+            logger.info("LLM 管线初始化完成 (LanguageUnderstanding + OA + AgentLoop + Compaction)")
             
         except Exception as e:
             logger.warning(f"LLM 管线初始化失败，使用规则模式: {e}")
@@ -505,8 +505,8 @@ class OpenRoboBrain:
                 ]
                 logger.info(f"[{trace_id}] 检索到 {len(ranked)} 条相关记忆")
         
-        # 2. DialogueManager 自由推理（能力层）
-        understanding = await self._dialogue_manager.understand(
+        # 2. LanguageUnderstanding 自由推理（能力层/认知）
+        understanding = await self._language_understanding.understand(
             user_input=user_input,
             trace_id=trace_id,
             extra_context={"memory_snippets": memory_snippets} if memory_snippets else None,
@@ -518,7 +518,7 @@ class OpenRoboBrain:
         logger.debug(f"[{trace_id}] 完整思维链: {understanding.reasoning[:300]}...")
         
         # 3. 设置对话回复
-        result.chat_response = await self._dialogue_manager.generate_reply(understanding)
+        result.chat_response = await self._language_understanding.generate_reply(understanding)
         
         # 4. 如需行动 → OrchestratorAgent 编排执行（Agent层）
         if understanding.requires_action and self._orchestrator:
