@@ -1,353 +1,174 @@
 # OpenRoboBrain 待办任务
 
-## 立即处理 (本周) -- 第二阶段核心功能
+## 里程碑状态
 
-### P0: Agent Loop 真实 LLM 集成
-
-- [x] **D-100** LLM 推理适配器 ✅
-  - 文件: `orb/agent/runtime/llm_inference.py`
-  - 状态: 已完成（流式/非流式、tool_calls 解析、token 统计、16个测试通过）
-
-- [x] **D-101** Agent Loop ReAct 集成验证 ✅
-  - 状态: 已完成（推理→工具调用→再推理循环验证通过）
-
-### P0: Session Compaction
-
-- [x] **D-102** Token 计数与会话压缩 ✅
-  - 文件: `orb/agent/infrastructure/session_compactor.py`
-  - 状态: 已完成（token 估算、LLM 摘要、session pruning、自动触发、19个测试通过）
-
-### P0: Memory 系统 (含类人记忆排序)
-
-- [x] **D-103** MemoryStream 基础层 ✅
-  - 文件: `orb/data/memory/memory_stream.py`
-  - 状态: 已完成（MemoryObject + MemoryStream + Markdown/JSON 持久化 + 间隔重复）
-
-- [x] **D-104** MemoryRanker 类人记忆排序 ✅
-  - 文件: `orb/data/memory/memory_ranker.py`
-  - 状态: 已完成（5信号评分 + 遗忘曲线 + 扩散激活 + 可解释性输出、33个测试通过）
-
-- [ ] **D-105** Memory 工具集成
-  - 任务: memory_write/memory_search/memory_get 工具注册到 ToolExecutor
-  - 优先级: P1
-
-### 测试任务
-
-- [x] **T-009** LLM 推理适配器测试 ✅
-  - 状态: 已完成（16个测试通过）
-
-- [x] **T-010** MemoryRanker 单元测试 ✅
-  - 状态: 已完成（33个测试通过）
-
-- [x] **T-011** Session Compactor 测试 ✅
-  - 状态: 已完成（19个测试通过）
-
-- [x] **T-012** Phase 2 集成测试 ✅
-  - 状态: 已完成（9个集成测试通过）
-
-### Phase 3 (已完成)
-
-- [x] **D-106** 核心管线贯通 -- core.py LLM/规则双模式 ✅
-- [x] **D-105** Memory 工具注册 -- memory_write/search/get ✅
-- [x] **D-107** CLI 增强 -- /memory、/stats 命令 ✅
-- [x] **T-013** Phase 3 集成测试 (15个测试) ✅
-
-### MuJoCo G1 仿真 (feature/mujoco-g1-sim 分支)
-
-- [x] **SIM-001** Ollama 自动检测 ✅
-- [x] **SIM-002** WebSocket 命令广播器 ✅
-- [x] **SIM-003** ROS2 报文监控终端 ✅
-- [x] **SIM-004** MuJoCo G1 仿真终端 (unitree_rl_gym 策略) ✅
-- [x] **SIM-005** 三终端启动脚本 ✅
-
-### 已完成 (第一阶段)
-
-- [x] **D-001** Agent运行时主循环完善 ✅
-- [x] **D-002** 工具执行器完善 ✅
-- [x] **D-003** Shell工具安全实现 ✅
-- [x] **D-004** SQLite存储适配器 ✅
-- [x] **T-001** 创建测试目录结构 ✅
-- [x] **T-005** MVP端到端测试 ✅ (规则模式)
-- [x] **T-006** MessageBus单元测试 ✅
-- [x] **T-007** ToolPolicy单元测试 ✅
-- [x] **T-008** SubAgent终止测试 ✅
+| 里程碑 | 状态 |
+|--------|------|
+| M1 核心框架 | ✅ 完成 |
+| M2 智能管线 | ✅ 完成 |
+| M3 MuJoCo G1 仿真 | ✅ 完成 |
+| M4 能力层深化 | 📋 计划中 |
 
 ---
 
-## 短期 (2周内)
+## 立即处理: M3 → main 合入
 
-### 开发任务
+### PR 1: Bug Fixes (P0)
 
-- [ ] **D-005** 工作流记忆持久化
-  - 文件: `orb/data/explicit/workflow_memory.py`
-  - 任务: 集成SQLite存储
-  - 依赖: D-004 ✅
+- [ ] **MERGE-001** memory.py register → registry.register 修复
+- [ ] **MERGE-002** brain_cerebellum_bridge to_dict() snake_case 修复
+- [ ] **MERGE-003** stream_handler 事件队列溢出修复
+- [ ] **MERGE-004** command_broadcaster 重试机制
+- [ ] **MERGE-005** requirements.txt ollama 依赖
 
-- [x] **D-006** HTTP工具完善 ✅
-  - 文件: `orb/system/tools/builtin/http.py`
-  - 状态: 已完成（GET/POST、httpx/aiohttp双支持、文件下载）
+### PR 2: 功能增强 (P1)
 
-- [x] **D-007** 子Agent生成器 ✅
-  - 文件: `orb/agent/subagent/spawn.py`
-  - 状态: 已完成（动态Agent创建、任务追踪、取消机制）
+- [ ] **MERGE-010** core.py JSON 解析增强 (混合格式支持)
+- [ ] **MERGE-011** ASR 模块 (orb/agent/atomic/audio/asr.py)
+- [ ] **MERGE-012** TTS 模块 (orb/agent/atomic/audio/tts.py)
+- [ ] **MERGE-013** CLI --voice 语音对话模式
 
-- [x] **D-008** 任务拆解器LLM集成 ✅
-  - 文件: `orb/agent/orchestrator/task_decomposer.py`
-  - 状态: 已完成（LLM分解 + 规则分解fallback + 机器人场景模板）
+---
 
-- [x] **D-009** 行为层框架实现 ✅
-  - 目录: `orb/behavior/`
-  - 状态: 已完成（基类、注册表、执行器、内置行为、GeneralBehavior）
+## M4: 能力层深化 (下一阶段)
 
-- [ ] **D-015** LLM配置优化
-  - 文件: `orb/system/llm/config.py`
-  - 任务: 支持更多Provider配置、流式输出优化
+### Phase 4.1: 认知能力 (能力层 cognition/)
+
+- [ ] **D-200** 世界模型 (WorldModel)
+  - 文件: `orb/capability/cognition/world_model.py`
+  - 任务: 结构化场景图 (物体/人/空间关系/状态)
+  - 与 MemoryStream 区分: 世界模型是"当前状态"，记忆是"历史事件"
+  - 优先级: P0
+
+- [ ] **D-201** 目标管理系统 (GoalManager)
+  - 文件: `orb/capability/cognition/goal_manager.py`
+  - 任务: 分层目标栈 (长期 → 当前 → 即时)
+  - 支持目标由用户设定或机器人自己产生
+  - 优先级: P0
+
+- [ ] **D-202** 认知循环 (CognitiveLoop)
+  - 文件: `orb/capability/cognition/cognitive_loop.py`
+  - 任务: 持续运行的感知-推理-行动循环，替代 process() 单次调用
+  - 人类说话只是认知循环的一个输入事件
+  - 优先级: P0
+
+- [ ] **D-203** 自我反思 (Reflection)
+  - 文件: `orb/capability/cognition/reflection.py`
+  - 任务: 回顾近期执行，从错误中提取教训写入长期记忆
   - 优先级: P1
 
-- [ ] **D-016** 多Agent协作测试场景
-  - 任务: 创建多Agent协作的示例场景
+### Phase 4.2: 自然对话 (能力层 interaction/)
+
+- [ ] **D-210** 对话管理器 (DialogueManager)
+  - 文件: `orb/capability/interaction/dialogue.py`
+  - 任务: 意图分类 (闲聊/指令/确认/澄清) + 多轮上下文
+  - 关键: 意图理解与动作生成解耦
+  - 优先级: P0
+
+- [ ] **D-211** 意图-行动分离架构
+  - 任务: Step1 理解意图 → Step2 认知决策 → Step3 规划动作
+  - 消除当前"LLM 必须同时理解语言+生成JSON"的问题
+  - 优先级: P1
+
+- [ ] **D-212** 隐含意图推理
+  - 任务: "这里好暗" → 推理出开灯, "好渴" → 推理出倒水
+  - 基于世界模型 + 常识推理
   - 优先级: P2
 
-### 测试任务
+### Phase 4.3: 多模态感知 (能力层 perception/ + Agent层 atomic/)
 
-- [ ] **T-003** Agent基础流程测试
-  - 范围: 消息发送→处理→响应
-  - 覆盖: `agent/base.py`, `brain_pipeline/`
+- [ ] **D-220** 视觉理解模块
+  - 文件: `orb/agent/atomic/vision/image_understand.py` (已有框架)
+  - 任务: 集成视觉模型 (YOLO/CLIP/LLaVA)
+  - 优先级: P1
 
-- [ ] **T-004** 工具系统测试
-  - 范围: 文件工具、Shell工具
-  - 覆盖: `tools/builtin/`
+- [ ] **D-221** ASR 增强
+  - 任务: 打断支持、实时流式识别、多语言
+  - 可选: CosyVoice 高质量中文 TTS 替代 edge-tts
+  - 优先级: P2
 
-- [x] **T-006** MessageBus单元测试 ✅
-  - 文件: `tests/unit/test_message_bus.py`
-  - 状态: 已完成
+- [ ] **D-222** 空间感知
+  - 任务: 语义地图 (不只障碍物，而是"厨房的桌子")
+  - 优先级: P2
 
-- [x] **T-007** ToolPolicy单元测试 ✅
-  - 文件: `tests/unit/test_tool_policy_enforcement.py`
-  - 状态: 已完成
+### Phase 4.4: 经验学习 (数据层 memory/)
 
-- [x] **T-008** SubAgent终止测试 ✅
-  - 文件: `tests/unit/test_subagent_termination.py`
-  - 状态: 已完成
+- [ ] **D-230** 情景记忆 (EpisodicMemory)
+  - 文件: `orb/data/memory/episodic_memory.py`
+  - 任务: 从事件列表升级为因果链叙事
+  - 优先级: P1
 
----
+- [ ] **D-231** 技能习得
+  - 任务: 从重复成功执行中提取技能模式
+  - 可复用、组合、迁移
+  - 优先级: P2
 
-## 中期 (1月内)
-
-### 开发任务
-
-- [ ] **D-010** 技能基类完善
-  - 文件: `orb/skills/base.py`
-  - 任务: 实现技能生命周期回调
-
-- [ ] **D-011** 文件管理技能
-  - 目录: `orb/skills/file_management/`
-  - 任务: 文件搜索、整理、备份
-
-- [ ] **D-012** 代码分析技能
-  - 目录: `orb/skills/code_analysis/`
-  - 任务: 代码阅读、分析、生成
-
-- [ ] **D-013** 向量存储 (SQLite + Embeddings)
+- [ ] **D-232** 向量检索
   - 文件: `orb/data/storage/vector.py`
-  - 任务: 基于 SQLite 的向量存储（不再依赖 ChromaDB）
-  - 依赖: D-103 MemoryStream
-
-- [ ] **D-014** 实体记忆向量化
-  - 文件: `orb/data/explicit/entity_memory.py`
-  - 任务: 集成 MemoryRanker 进行实体记忆检索
-
-- [x] **D-017** 工具权限系统 ✅
-  - 文件: `orb/agent/security/tool_policy.py`
-  - 状态: 已完成（ToolPolicy枚举、ToolExecutor集成）
-
-- [ ] **D-018** API接口层
-  - 任务: 实现REST API接口，支持HTTP调用
+  - 任务: 语义搜索 (ChromaDB 或 SQLite+Embeddings)
   - 优先级: P1
-
-- [ ] **D-019** WebSocket实时通信
-  - 任务: 实现WebSocket接口，支持流式响应
-  - 优先级: P2
-
-### 产品任务
-
-- [x] **P-001** CLI交互界面 ✅
-  - 文件: `orb/cli.py`
-  - 状态: 已完成（REPL、彩色输出、verbose模式、单命令执行）
-
-- [ ] **P-002** 配置校验
-  - 任务: 启动时校验配置完整性
-  - 用于: 减少运行时错误
-
-- [ ] **P-003** Web演示界面
-  - 任务: 简单的Web界面用于演示
-  - 优先级: P2
 
 ---
 
-## 长期 (需评估)
+## M5: 硬件集成
 
-### ROS2集成
-- [ ] **D-020** ROS2节点实现
-- [ ] **D-021** 话题发布订阅
-- [x] **D-022** 大脑-小脑桥接 ✅
-  - 文件: `orb/system/brain_pipeline/brain_cerebellum_bridge.py`
-  - 状态: 已完成（命令转换、mock模式、状态反馈）
-
-### 硬件集成
-- [ ] **D-030** 传感器驱动框架
-- [ ] **D-031** 执行器控制框架
-- [ ] **D-032** URDF解析器
-
-### 知识图谱
-- [ ] **D-040** Neo4j集成
-- [ ] **D-041** 图查询接口
-- [ ] **D-042** 关系推理
-
-### 性能优化
-- [ ] **D-050** LLM调用缓存
-- [ ] **D-051** 并发处理优化
-- [ ] **D-052** 内存管理优化
+- [ ] **D-300** ROS2 真实节点
+- [ ] **D-301** 话题发布/订阅
+- [ ] **D-302** 传感器驱动框架
+- [ ] **D-303** 执行器控制框架
+- [ ] **D-304** Sim2Real 策略迁移
+- [ ] **D-305** 安全系统 (碰撞/急停)
 
 ---
 
 ## 已完成
 
-### 核心架构
+### M1 核心框架
 - [x] 七层架构设计（含行为层）
-- [x] Agent基类实现
-- [x] 消息总线实现（含超时、请求清理）
-- [x] 配置中心实现
+- [x] Agent 系统 (Super/Orchestrator/Atomic)
+- [x] 消息总线 + 配置中心
+- [x] LLM Provider (OpenAI/Anthropic/Ollama/Kimi/GLM/Qwen/DeepSeek/Doubao)
+- [x] 工具系统 (File/Shell/HTTP/Memory)
+- [x] SQLite 存储适配器
 
-### LLM集成
-- [x] LLM Provider实现 (OpenAI/Anthropic/Ollama/Kimi/GLM/Qwen/DeepSeek/Doubao)
-- [x] LLMFactory工厂模式
-- [x] 流式输出支持
+### M2 智能管线
+- [x] AgentLoop ReAct 循环
+- [x] LLMInferenceAdapter (流式/非流式)
+- [x] MemoryRanker (5信号类人排序)
+- [x] SessionCompactor (自动压缩)
+- [x] ToolPolicy 权限系统
+- [x] TaskDecomposer 任务拆解
+- [x] CLI 交互界面
 
-### Agent系统
-- [x] Agent Loop完整实现（事件驱动、生命周期钩子）
-- [x] 工具执行器实现（注册、执行、超时、ToolPolicy）
-- [x] 上下文构建器实现（Bootstrap注入、记忆、压缩）
-- [x] SubAgent生成器（动态创建、任务追踪、取消）
-- [x] ToolPolicy权限系统（ALLOW/DENY/REQUIRE_APPROVAL）
-- [x] ReasoningAgent（LLM驱动的认知推理）
-- [x] OrchestratorAgent.execute_with_llm()
+### M3 MuJoCo G1 仿真
+- [x] Ollama 自动检测 + 本地 LLM
+- [x] WebSocket 命令广播器 (含重试/端口回退)
+- [x] ROS2 报文监控终端
+- [x] MuJoCo G1 仿真终端 (unitree_rl_gym 策略)
+- [x] 三终端启动脚本
+- [x] 命令队列系统 (EXEC→QUEUE→NEXT→DONE)
+- [x] 参数驱动速度 + 组合运动 (circle/spin)
+- [x] 结构化 LLM 提示词 (原子动作表)
+- [x] 健壮 JSON 解析 (混合格式支持)
+- [x] ASR (faster-whisper) 语音识别
+- [x] TTS (edge-tts) 语音合成
+- [x] CLI --voice 语音对话模式
 
-### 工具系统
-- [x] 文件工具实现
-- [x] Shell工具安全实现（白/黑名单、安全模式）
-- [x] HTTP工具实现（GET/POST、文件下载）
-
-### 通信系统
-- [x] WebSocket服务器实现（大脑管道通信）
-- [x] Brain-Cerebellum Bridge实现（命令转换、mock模式）
-
-### 数据存储
-- [x] 会话存储实现（内存版）
-- [x] 工作流记忆实现（内存版 + SQLite持久化）
-- [x] SQLite存储适配器（连接池、CRUD、迁移）
-
-### 行为层
-- [x] 行为层框架（基类、注册表、执行器）
-- [x] 内置行为（烹饪、清洁、GeneralBehavior）
-- [x] BehaviorContext（trace_id、ros2_commands、chat_response）
-
-### MVP调用链路
-- [x] OpenRoboBrain.process()入口方法
-- [x] ProcessResult数据类（chat_response + ros2_commands）
-- [x] CLI交互界面（REPL、彩色输出、verbose模式）
-- [x] 增强日志系统（trace_id、层级标识、trace_context）
+### Bug Fixes (M3 期间)
+- [x] memory.py register → registry.register
+- [x] bridge to_dict() snake_case/camelCase 双格式
+- [x] stream_handler 队列溢出处理
+- [x] broadcaster 端口重试/reuse_address
+- [x] requirements.txt ollama 依赖
 
 ### 测试
-- [x] 测试框架搭建（pytest配置、fixtures）
-- [x] MessageBus单元测试
-- [x] ToolPolicy单元测试
-- [x] SubAgent终止测试
-
-### 质量保障
-- [x] 风险管理机制（RISKS.md）
-- [x] BUG管理机制（BUGS.md）
-- [x] RiskMonitor服务
-
----
-
-## 阻塞问题
-
-| ID | 问题 | 影响 | 状态 |
-|----|------|------|------|
-| B-001 | ~~无测试环境~~ | ~~无法验证功能~~ | ✅ 已解决 |
-| B-002 | ROS2环境缺失 | 硬件集成无法进行 | 使用mock模式 |
-| B-003 | 无真实硬件 | 只能模拟测试 | 使用mock模式 |
-| B-004 | LLM API配置 | 需要配置API Key | 待用户配置 |
+- [x] 219+ 单元/集成测试通过
+- [x] 端到端测试 (LLM + 仿真 + WebSocket)
 
 ---
 
 ## 备注
 
-- 任务ID格式: `{类型}-{序号}`
-  - D: 开发 Development
-  - T: 测试 Test
-  - P: 产品 Product
-  - DOC: 文档 Documentation
-  - B: 阻塞 Blocker
-  - RISK: 风险修复
-
-- 优先级:
-  - P0: 阻塞性，本周必须完成
-  - P1: 重要，下周完成
-  - P2: 一般，月内完成
-  - P3: 低优先级
-
----
-
-## MVP使用指南
-
-### 快速开始
-
-```bash
-# 启动CLI（模拟ROS2模式）
-python -m orb.cli
-
-# 详细模式（显示trace_id、执行时间）
-python -m orb.cli -v
-
-# 执行单条命令
-python -m orb.cli -e "帮我倒杯水"
-
-# 连接真实ROS2
-python -m orb.cli --real-ros2
-```
-
-### CLI命令
-
-| 命令 | 说明 |
-|------|------|
-| /help | 显示帮助 |
-| /verbose | 切换详细模式 |
-| /status | 显示系统状态 |
-| /quit | 退出程序 |
-
-### 代码调用
-
-```python
-from orb import OpenRoboBrain
-
-brain = OpenRoboBrain(mock_ros2=True)
-await brain.initialize()
-await brain.start()
-
-result = await brain.process("帮我倒杯水")
-print(result.chat_response)   # 对话响应
-print(result.ros2_commands)   # ROS2控制命令
-
-await brain.stop()
-```
-
----
-
-## 相关文档
-
-- [RISKS.md](./RISKS.md) - 风险管理
-- [BUGS.md](./BUGS.md) - BUG跟踪
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - 架构文档
-- [ROADMAP.md](./ROADMAP.md) - 路线图
+- 任务ID: D-开发, T-测试, MERGE-合入, DOC-文档
+- 优先级: P0 阻塞性 / P1 重要 / P2 一般
+- 所有新能力在现有七层架构的**能力层**中实现，不替换架构
