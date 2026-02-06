@@ -1,4 +1,4 @@
-﻿"""
+"""
 编排Agent
 
 第二级Agent，负责任务编排与输入输出管理。
@@ -276,6 +276,97 @@ class OrchestratorAgent(BaseAgent):
         """注册任务模板"""
         self.task_decomposer.register_template(task_name, subtasks)
     
+    async def execute_understanding(
+        self,
+        understanding: Any,
+        trace_id: str = "",
+    ) -> LLMExecutionResult:
+        """
+        接收 DialogueManager 的自由推理结果，编排执行。
+
+        understanding.reasoning 包含完整思维链，
+        smart_decompose 基于此做更精确的任务分解。
+
+        Args:
+            understanding: DialogueManager 产出的 Understanding 对象
+            trace_id: 追踪 ID
+
+        Returns:
+            LLMExecutionResult: 包含 ros2_commands
+        """
+        result = LLMExecutionResult()
+
+        with trace_context(trace_id=trace_id, layer=Layer.AGENT, component=self.name):
+            self.logger.info(
+                f"[{trace_id}] OA 接收推理结果: {understanding.summary}"
+            )
+            self.logger.debug(
+                f"[{trace_id}] 行动描述: {understanding.action_description}"
+            )
+
+            try:
+                # 使用 TaskDecomposer 的 LLM 驱动分解
+                # 输入是 DialogueManager 已理解的行动描述（比原始用户文本更精确）
+                task_description = understanding.action_description or understanding.summary
+
+                if self._llm:
+                    task = await self.task_decomposer.smart_decompose(
+                        task_description=task_description,
+                        available_agents=[],  # TODO: 从 SuperAgent 获取可用 Agent 列表
+                        context={
+                            "reasoning": understanding.reasoning,
+                            "raw_input": understanding.raw_input,
+                            "trace_id": trace_id,
+                        },
+                        llm=self._llm,
+                    )
+                else:
+                    # fallback: 规则分解
+                    task = self.task_decomposer.rule_based_decompose(
+                        task_description=task_description,
+                        input_data={"reasoning": understanding.reasoning},
+                    )
+
+                self.logger.info(
+                    f"[{trace_id}] 任务分解完成: {task.name} "
+                    f"(type={task.task_type.value}, subtasks={len(task.subtasks)})"
+                )
+
+                # 执行任务
+                exec_ctx = await self.flow_controller.execute(task)
+
+                result.success = task.success
+                result.reasoning = understanding.reasoning
+
+                # 从执行结果提取 ROS2 命令
+                if exec_ctx.result:
+                    if isinstance(exec_ctx.result, list):
+                        for item in exec_ctx.result:
+                            if isinstance(item, dict) and "command_type" in item:
+                                result.ros2_commands.append(item)
+                    elif isinstance(exec_ctx.result, dict) and "command_type" in exec_ctx.result:
+                        result.ros2_commands.append(exec_ctx.result)
+
+                # 如果任务分解产生了子任务但无 ROS2 命令，从子任务推断
+                if not result.ros2_commands and task.subtasks:
+                    for subtask in task.subtasks:
+                        if subtask.name:
+                            result.ros2_commands.append({
+                                "command_type": subtask.name,
+                                "parameters": subtask.parameters,
+                            })
+
+                self.logger.info(
+                    f"[{trace_id}] OA 执行完成: {len(result.ros2_commands)} 条命令"
+                )
+
+            except Exception as e:
+                self.logger.error(f"[{trace_id}] OA 执行失败: {e}")
+                result.success = False
+                result.error = str(e)
+
+        return result
+
     async def execute_with_llm(
         self,
         user_input: str,

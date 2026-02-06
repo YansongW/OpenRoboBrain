@@ -123,9 +123,16 @@ class OpenRoboBrain:
         # 行为层
         self._behavior_executor: Optional["BehaviorExecutor"] = None
         
+        # 能力层 - 对话管理
+        self._dialogue_manager = None  # DialogueManager
+        self._orchestrator = None      # OrchestratorAgent
+        
         # 记忆系统
         self._memory_stream: Optional["MemoryStream"] = None
         self._memory_ranker: Optional["MemoryRanker"] = None
+        
+        # 广播器
+        self._broadcaster = None
         
         # 状态
         self._running = False
@@ -268,8 +275,21 @@ class OpenRoboBrain:
                 llm=self._llm,
             )
             
+            # 创建 DialogueManager (能力层 - 自由推理式理解)
+            from orb.capability.interaction.dialogue import DialogueManager
+            self._dialogue_manager = DialogueManager(llm=self._llm)
+            
+            # 创建 OrchestratorAgent (Agent层 - 任务编排)
+            from orb.agent.orchestrator.orchestrator import OrchestratorAgent
+            self._orchestrator = OrchestratorAgent(
+                name="MainOrchestrator",
+                message_bus=self._message_bus,
+                super_agent=self._super_agent,
+                llm=self._llm,
+            )
+            
             self._llm_available = True
-            logger.info("LLM 管线初始化完成 (AgentLoop + Inference + Compaction)")
+            logger.info("LLM 管线初始化完成 (DialogueManager + OA + AgentLoop + Compaction)")
             
         except Exception as e:
             logger.warning(f"LLM 管线初始化失败，使用规则模式: {e}")
@@ -456,7 +476,11 @@ class OpenRoboBrain:
         trace_id: str,
     ) -> ProcessResult:
         """
-        LLM 模式处理: AgentLoop -> LLM -> Memory -> Compaction
+        LLM 模式处理: DialogueManager 推理 → OrchestratorAgent 编排
+
+        两步分离架构:
+        Step 1: DialogueManager 自由推理用户意图（能力层）
+        Step 2: 如需行动，OrchestratorAgent 编排执行（Agent层）
         """
         result = ProcessResult(
             trace_id=trace_id,
@@ -465,8 +489,8 @@ class OpenRoboBrain:
             mode="llm",
         )
         
-        # 1. 记忆检索 - 用 MemoryRanker 找到相关记忆
-        memory_context = ""
+        # 1. 记忆检索 — 为 DialogueManager 提供上下文
+        memory_snippets = []
         if self._memory_stream and self._memory_ranker and self._memory_stream.size > 0:
             ranked = self._memory_ranker.rank(
                 query=user_input,
@@ -475,58 +499,56 @@ class OpenRoboBrain:
                 top_k=5,
             )
             if ranked:
-                memory_lines = [
-                    f"- {r.memory.description} (相关度: {r.final_score:.2f})"
+                memory_snippets = [
+                    f"{r.memory.description} (相关度: {r.final_score:.2f})"
                     for r in ranked
                 ]
-                memory_context = "\n相关记忆:\n" + "\n".join(memory_lines)
                 logger.info(f"[{trace_id}] 检索到 {len(ranked)} 条相关记忆")
         
-        # 2. 注入记忆到系统提示词
-        if memory_context and self._context_builder:
-            from orb.agent.runtime.context_builder import ContextConfig
-            self._context_builder._config.base_system_prompt = (
-                self._get_system_prompt() + memory_context
-            )
-        
-        # 3. 通过 AgentLoop 执行
-        run_result = await self._agent_loop.run(
-            session_id=self._main_session_id or "default",
+        # 2. DialogueManager 自由推理（能力层）
+        understanding = await self._dialogue_manager.understand(
             user_input=user_input,
-            agent_id="main",
-            metadata={"trace_id": trace_id, "parameters": parameters or {}},
+            trace_id=trace_id,
+            extra_context={"memory_snippets": memory_snippets} if memory_snippets else None,
         )
         
-        # 4. 解析 AgentLoop 结果
-        if run_result.status == "success":
-            response_text = run_result.response
-            
-            # 尝试解析 JSON 格式响应
-            parsed = self._parse_llm_response(response_text)
-            result.chat_response = parsed.get("chat_response", response_text)
-            
-            # 提取 ROS2 命令
-            ros2_cmds = parsed.get("ros2_commands", [])
-            if ros2_cmds:
-                await self._send_ros2_commands(ros2_cmds, trace_id, result)
-            
-            result.success = True
-            result.metadata["tokens_used"] = run_result.tokens_used
-            result.metadata["iterations"] = run_result.iterations
-        else:
-            result.success = False
-            result.error = run_result.error
-            result.chat_response = f"处理失败: {run_result.error}"
+        # 完整记录推理过程
+        logger.info(f"[{trace_id}] 推理结论: {understanding.summary}")
+        logger.info(f"[{trace_id}] 需要行动: {understanding.requires_action}")
+        logger.debug(f"[{trace_id}] 完整思维链: {understanding.reasoning[:300]}...")
         
-        # 5. 存储新记忆
-        if self._memory_stream and result.success:
+        # 3. 设置对话回复
+        result.chat_response = await self._dialogue_manager.generate_reply(understanding)
+        
+        # 4. 如需行动 → OrchestratorAgent 编排执行（Agent层）
+        if understanding.requires_action and self._orchestrator:
+            logger.info(f"[{trace_id}] 交给 OA 编排: {understanding.action_description}")
+            
+            exec_result = await self._orchestrator.execute_understanding(
+                understanding=understanding,
+                trace_id=trace_id,
+            )
+            
+            if exec_result.ros2_commands:
+                await self._send_ros2_commands(exec_result.ros2_commands, trace_id, result)
+                logger.info(f"[{trace_id}] OA 产出 {len(result.ros2_commands)} 条 ROS2 命令")
+        
+        result.success = True
+        result.metadata["understanding"] = understanding.to_log_dict()
+        
+        # 5. 存储记忆（含完整推理链，供未来反思）
+        if self._memory_stream:
             from orb.data.memory.memory_stream import MemoryType
             self._memory_stream.create_and_add(
                 description=f"用户: {user_input[:100]}",
                 memory_type=MemoryType.OBSERVATION,
                 importance=5.0,
                 session_id=self._main_session_id or "",
-                metadata={"trace_id": trace_id},
+                metadata={
+                    "trace_id": trace_id,
+                    "reasoning": understanding.reasoning[:500],
+                    "requires_action": understanding.requires_action,
+                },
             )
             if result.chat_response:
                 self._memory_stream.create_and_add(

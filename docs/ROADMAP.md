@@ -71,9 +71,9 @@ OpenRoboBrain 采用**七层大脑-小脑解耦架构**，所有演进在此框�
 
 ---
 
-## M4: 能力层深化 (计划中)
+## M4: 自然对话 (进行中, feature/m4-natural-dialogue)
 
-**核心思路**: 在现有架构的**能力层 (Capability Layer)** 中实现认知能力，不替换架构。
+**核心思路**: 在现有架构的**能力层**实现自由推理式对话理解，**Agent 层**用 OA 编排执行。
 
 ### Phase 4.1: 认知能力 (能力层 → cognition/)
 
@@ -99,13 +99,19 @@ OpenRoboBrain 采用**七层大脑-小脑解耦架构**，所有演进在此框�
 - [ ] **认知循环** — 从 `process()` 单次调用演进为持续的感知-推理-行动循环
 - [ ] **自我反思** — 回顾近期执行，从错误中学习
 
-### Phase 4.2: 自然对话 (能力层 → interaction/)
+### Phase 4.2: 自然对话 (能力层 → interaction/) ✅ 基础完成
 
 目标：像人一样对话，不只是"解析命令生成JSON"。
 
-- [ ] **对话管理** — 意图理解（闲聊/指令/确认/澄清）+ 上下文追踪
-- [ ] **意图-行动分离** — 对话理解和动作生成解耦，消除 JSON 格式约束
-- [ ] **隐含意图推理** — "这里好暗" → 推理出需要开灯
+- [x] **DialogueManager** — 自由推理式理解（无枚举分类），LLM 思维链推理
+- [x] **Understanding 数据结构** — 完整推理链记录（reasoning, summary, requires_action）
+- [x] **意图-行动分离** — DialogueManager(能力层) 理解 → OA(Agent层) 编排，消除 JSON 格式约束
+- [x] **OA.execute_understanding()** — OrchestratorAgent 接收推理结果，smart_decompose 分解
+- [x] **core.py 两步架构** — process() 重构为 DM 推理 → OA 编排
+- [x] **隐含意图推理** — LLM 自由推理涌现（"这里好暗" → 开灯）
+- [x] **完整推理链日志** — trace_id 串联，reasoning 存入记忆
+- [ ] **多轮澄清** — 待进一步完善
+- [ ] **对话记忆持久化** — DialogueContext 跨会话保持
 
 ### Phase 4.3: 多模态感知 (能力层 → perception/ + Agent层 → atomic/)
 
